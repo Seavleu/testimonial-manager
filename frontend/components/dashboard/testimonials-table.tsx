@@ -6,7 +6,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
-import { PersonalMessageManager } from '@/components/dashboard/personal-message-manager'
+import { PersonalMessageManager } from '@/components/dashboard/personal-message-manager';
+import { Copy, ExternalLink, Search, Video, CheckCircle, X } from 'lucide-react';
 
 interface Testimonial {
   id: string;

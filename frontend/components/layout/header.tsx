@@ -25,6 +25,12 @@ export function Header() {
                   <span>Dashboard</span>
                 </Button>
               </Link>
+              <Link href="/widget-test">
+                <Button variant="ghost" size="sm" className="flex items-center space-x-2">
+                  <Star className="h-4 w-4" />
+                  <span>Widget Test</span>
+                </Button>
+              </Link>
               <Button
                 variant="ghost"
                 size="sm"
