@@ -216,36 +216,34 @@ async def submit_testimonial(
                 
                 # Upload to testimonial-videos bucket
                 try:
+                    print(f"Uploading file: {filename} ({len(file_content)} bytes)")
+                    
                     storage_response = supabase.storage.from_('testimonial-videos').upload(
                         path=filename,
                         file=file_content,
                         file_options={"content-type": video.content_type or "video/mp4"}
                     )
                     
-                    if hasattr(storage_response, 'status_code') and storage_response.status_code >= 400:
+                    print(f"Upload response: {storage_response}")
+                    
+                    # Check if upload was successful
+                    if hasattr(storage_response, 'error') and storage_response.error:
+                        print(f"Upload error: {storage_response.error}")
                         raise HTTPException(
                             status_code=500,
-                            detail=f"Failed to upload video to storage. Please try again or contact support if the problem persists."
+                            detail=f"Failed to upload video: {storage_response.error}"
                         )
                     
-                    # Get public URL
-                    public_url_response = supabase.storage.from_('testimonial-videos').get_public_url(filename)
-                    if hasattr(public_url_response, 'data') and public_url_response.data:
-                        video_url = public_url_response.data.get("publicUrl")
-                    
-                    if not video_url:
-                        raise HTTPException(
-                            status_code=500,
-                            detail="Video uploaded but failed to generate public URL. Please try again."
-                        )
+                    # Always construct the URL manually for reliability
+                    video_url = f"{SUPABASE_URL}/storage/v1/object/public/testimonial-videos/{filename}"
+                    print(f"Generated video URL: {video_url}")
                     
                 except Exception as storage_error:
-                    print(f"Storage error details: {str(storage_error)}")
+                    print(f"Storage error: {str(storage_error)}")
                     if "already exists" in str(storage_error).lower():
-                        raise HTTPException(
-                            status_code=409,
-                            detail="A file with this name already exists. Please try uploading again."
-                        )
+                        # File already exists, construct URL anyway
+                        video_url = f"{SUPABASE_URL}/storage/v1/object/public/testimonial-videos/{filename}"
+                        print(f"File exists, using URL: {video_url}")
                     else:
                         raise HTTPException(
                             status_code=500,

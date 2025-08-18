@@ -159,3 +159,8 @@ Thumbs.db
 # Local development
 .local
 .localhost
+
+# Documentation and workflow files (excluded from version control)
+frontend/docs/
+WORKFLOW_GUIDELINES.md
+WORKFLOW_SUMMARY.md

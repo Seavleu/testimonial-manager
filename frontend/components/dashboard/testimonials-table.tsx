@@ -7,7 +7,26 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { PersonalMessageManager } from '@/components/dashboard/personal-message-manager';
-import { Copy, ExternalLink, Search, Video, CheckCircle, X } from 'lucide-react';
+import { 
+  Copy, 
+  ExternalLink, 
+  Search, 
+  Video, 
+  CheckCircle, 
+  X, 
+  MoreHorizontal,
+  Filter,
+  SortAsc,
+  Eye,
+  Edit,
+  Trash2,
+  MessageSquare,
+  Calendar,
+  User,
+  Star,
+  Clock,
+  AlertCircle
+} from 'lucide-react';
 
 interface Testimonial {
   id: string;
@@ -28,6 +47,10 @@ export function TestimonialsTable({ userId }: TestimonialsTableProps) {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [mounted, setMounted] = useState(false);
+  const [filter, setFilter] = useState<'all' | 'approved' | 'pending'>('all');
+  const [sortBy, setSortBy] = useState<'date' | 'name' | 'status'>('date');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const { toast } = useToast();
 
   useEffect(() => {
@@ -41,12 +64,45 @@ export function TestimonialsTable({ userId }: TestimonialsTableProps) {
   }, [userId, mounted]);
 
   useEffect(() => {
-    const filtered = testimonials.filter(testimonial =>
+    let filtered = testimonials;
+
+    // Apply search filter
+    if (searchTerm) {
+      filtered = filtered.filter(testimonial =>
       testimonial.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       testimonial.text.toLowerCase().includes(searchTerm.toLowerCase())
     );
+    }
+
+    // Apply status filter
+    if (filter === 'approved') {
+      filtered = filtered.filter(t => t.approved);
+    } else if (filter === 'pending') {
+      filtered = filtered.filter(t => !t.approved);
+    }
+
+    // Apply sorting
+    filtered.sort((a, b) => {
+      let comparison = 0;
+      
+      switch (sortBy) {
+        case 'name':
+          comparison = a.name.localeCompare(b.name);
+          break;
+        case 'status':
+          comparison = (a.approved ? 1 : 0) - (b.approved ? 1 : 0);
+          break;
+        case 'date':
+        default:
+          comparison = new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+          break;
+      }
+      
+      return sortOrder === 'asc' ? -comparison : comparison;
+    });
+
     setFilteredTestimonials(filtered);
-  }, [testimonials, searchTerm]);
+  }, [testimonials, searchTerm, filter, sortBy, sortOrder]);
 
   const fetchTestimonials = async () => {
     try {
@@ -183,6 +239,21 @@ export function TestimonialsTable({ userId }: TestimonialsTableProps) {
     }
   };
 
+  const getTimeAgo = (dateString: string) => {
+    try {
+      const now = new Date();
+      const date = new Date(dateString);
+      const diffInHours = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60));
+      
+      if (diffInHours < 1) return 'Just now';
+      if (diffInHours < 24) return `${diffInHours}h ago`;
+      if (diffInHours < 168) return `${Math.floor(diffInHours / 24)}d ago`;
+      return `${Math.floor(diffInHours / 168)}w ago`;
+    } catch {
+      return 'Unknown';
+    }
+  };
+
   const approvedCount = testimonials.filter(t => t.approved).length;
   const pendingCount = testimonials.filter(t => !t.approved).length;
 
@@ -197,76 +268,126 @@ export function TestimonialsTable({ userId }: TestimonialsTableProps) {
 
   if (loading) {
     return (
-      <div className="space-y-4">
-        <div className="h-8 bg-gray-200 rounded animate-pulse"></div>
-        <div className="h-64 bg-gray-200 rounded animate-pulse"></div>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="h-8 bg-gray-200 rounded w-48 animate-pulse"></div>
+          <div className="h-10 bg-gray-200 rounded w-32 animate-pulse"></div>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <div key={i} className="h-64 bg-gray-200 rounded-lg animate-pulse"></div>
+          ))}
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      {/* Personal Message Manager */}
-      <PersonalMessageManager userId={userId} />
-
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="text-2xl font-bold text-blue-600">{testimonials.length}</div>
-            <div className="text-sm text-gray-600">Total Testimonials</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="text-2xl font-bold text-green-600">{approvedCount}</div>
-            <div className="text-sm text-gray-600">Approved</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="text-2xl font-bold text-orange-600">{pendingCount}</div>
-            <div className="text-sm text-gray-600">Pending Review</div>
-          </CardContent>
-        </Card>
+    <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-lg">
+      <CardHeader>
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+          <div>
+            <CardTitle className="flex items-center text-2xl">
+              <MessageSquare className="h-6 w-6 mr-2 text-blue-600" />
+              Testimonials
+            </CardTitle>
+            <CardDescription>
+              Manage and review your customer testimonials
+            </CardDescription>
       </div>
 
-      {/* Collection Link */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Collection Link</CardTitle>
-          <CardDescription>
-            Share this link to collect testimonials from your customers
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex gap-2">
-            <Input
-              value={`${typeof window !== 'undefined' ? window.location.origin : ''}/collect?userId=${userId}`}
-              readOnly
-              className="flex-1"
-            />
-            <Button onClick={copyCollectionLink} variant="outline" size="sm">
-              <Copy className="h-4 w-4" />
-            </Button>
+          <div className="flex items-center gap-3">
             <Button
-              onClick={() => {
-                if (typeof window !== 'undefined') {
-                  window.open(`/collect?userId=${userId}`, '_blank');
-                }
-              }}
               variant="outline"
               size="sm"
+              onClick={copyCollectionLink}
+              className="border-blue-200 text-blue-700 hover:bg-blue-50"
             >
-              <ExternalLink className="h-4 w-4" />
+              <Copy className="h-4 w-4 mr-2" />
+              Copy Link
             </Button>
+            
+            <div className="flex items-center border rounded-lg">
+              <Button
+                variant={viewMode === 'grid' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setViewMode('grid')}
+                className="rounded-r-none"
+              >
+                <div className="grid grid-cols-2 gap-1 w-4 h-4">
+                  <div className="bg-current rounded-sm"></div>
+                  <div className="bg-current rounded-sm"></div>
+                  <div className="bg-current rounded-sm"></div>
+                  <div className="bg-current rounded-sm"></div>
+                </div>
+              </Button>
+              <Button
+                variant={viewMode === 'list' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setViewMode('list')}
+                className="rounded-l-none"
+              >
+                <div className="space-y-1 w-4 h-4">
+                  <div className="bg-current rounded-sm h-0.5"></div>
+                  <div className="bg-current rounded-sm h-0.5"></div>
+                  <div className="bg-current rounded-sm h-0.5"></div>
+                </div>
+              </Button>
+            </div>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </CardHeader>
+      
+      <CardContent className="space-y-6">
+        {/* Stats Bar */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="bg-gradient-to-r from-blue-50 to-blue-100 p-4 rounded-lg">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-blue-600">Total</p>
+                <p className="text-2xl font-bold text-blue-900">{testimonials.length}</p>
+              </div>
+              <MessageSquare className="h-8 w-8 text-blue-600" />
+            </div>
+          </div>
+          
+          <div className="bg-gradient-to-r from-green-50 to-green-100 p-4 rounded-lg">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-green-600">Approved</p>
+                <p className="text-2xl font-bold text-green-900">{approvedCount}</p>
+              </div>
+              <CheckCircle className="h-8 w-8 text-green-600" />
+            </div>
+          </div>
+          
+          <div className="bg-gradient-to-r from-orange-50 to-orange-100 p-4 rounded-lg">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-orange-600">Pending</p>
+                <p className="text-2xl font-bold text-orange-900">{pendingCount}</p>
+              </div>
+              <Clock className="h-8 w-8 text-orange-600" />
+            </div>
+          </div>
+          
+          <div className="bg-gradient-to-r from-purple-50 to-purple-100 p-4 rounded-lg">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-purple-600">With Videos</p>
+                <p className="text-2xl font-bold text-purple-900">
+                  {testimonials.filter(t => t.video_url).length}
+                </p>
+              </div>
+              <Video className="h-8 w-8 text-purple-600" />
+            </div>
+          </div>
+        </div>
 
-      {/* Search */}
-      <div className="relative">
-        <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+        {/* Filters and Search */}
+        <div className="flex flex-col lg:flex-row gap-4">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
         <Input
           placeholder="Search testimonials..."
           value={searchTerm}
@@ -275,84 +396,177 @@ export function TestimonialsTable({ userId }: TestimonialsTableProps) {
         />
       </div>
 
-      {/* Testimonials List */}
-      <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <select
+              value={filter}
+              onChange={(e) => setFilter(e.target.value as any)}
+              className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="all">All ({testimonials.length})</option>
+              <option value="approved">Approved ({approvedCount})</option>
+              <option value="pending">Pending ({pendingCount})</option>
+            </select>
+            
+            <select
+              value={`${sortBy}-${sortOrder}`}
+              onChange={(e) => {
+                const [newSortBy, newSortOrder] = e.target.value.split('-');
+                setSortBy(newSortBy as any);
+                setSortOrder(newSortOrder as any);
+              }}
+              className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="date-desc">Newest First</option>
+              <option value="date-asc">Oldest First</option>
+              <option value="name-asc">Name A-Z</option>
+              <option value="name-desc">Name Z-A</option>
+              <option value="status-asc">Status</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Testimonials Display */}
         {filteredTestimonials.length === 0 ? (
-          <Card>
-            <CardContent className="p-8 text-center">
-              <p className="text-gray-500">
-                {testimonials.length === 0
-                  ? 'No testimonials yet. Share your collection link to get started!'
-                  : 'No testimonials match your search.'}
-              </p>
-              {testimonials.length === 0 && (
+          <div className="text-center py-12">
+            <MessageSquare className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">
+              {searchTerm || filter !== 'all' ? 'No testimonials found' : 'No testimonials yet'}
+            </h3>
+            <p className="text-gray-600 mb-4">
+              {searchTerm || filter !== 'all' 
+                ? 'Try adjusting your search or filters'
+                : 'Start collecting testimonials by sharing your collection link'
+              }
+            </p>
+            {!searchTerm && filter === 'all' && (
+              <Button onClick={copyCollectionLink} className="bg-blue-600 hover:bg-blue-700">
+                <Copy className="h-4 w-4 mr-2" />
+                Copy Collection Link
+              </Button>
+            )}
+          </div>
+        ) : viewMode === 'grid' ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredTestimonials.map((testimonial) => (
+              <Card key={testimonial.id} className="bg-white border-0 shadow-md hover:shadow-lg transition-all duration-300">
+                <CardContent className="p-6">
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex items-center">
+                      <div className="h-10 w-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-semibold">
+                        {testimonial.name.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="ml-3">
+                        <p className="font-semibold text-gray-900">{testimonial.name}</p>
+                        <p className="text-sm text-gray-500">{getTimeAgo(testimonial.created_at)}</p>
+                      </div>
+                    </div>
+                    <Badge 
+                      variant={testimonial.approved ? "default" : "secondary"}
+                      className={testimonial.approved ? "bg-green-100 text-green-800" : "bg-orange-100 text-orange-800"}
+                    >
+                      {testimonial.approved ? 'Approved' : 'Pending'}
+                    </Badge>
+                  </div>
+                  
+                  <p className="text-gray-700 mb-4 line-clamp-3">&ldquo;{testimonial.text}&rdquo;</p>
+                  
+                  {testimonial.video_url && (
+                    <div className="flex items-center text-sm text-blue-600 mb-4">
+                      <Video className="h-4 w-4 mr-1" />
+                      Video testimonial available
+                    </div>
+                  )}
+                  
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-gray-500">{formatDate(testimonial.created_at)}</p>
+                    
+                    <div className="flex items-center gap-2">
+                      {!testimonial.approved && (
                 <Button 
-                  onClick={fetchTestimonials} 
-                  variant="outline" 
-                  className="mt-4"
-                >
-                  Refresh
+                          size="sm"
+                          onClick={() => handleApprove(testimonial.id)}
+                          className="bg-green-600 hover:bg-green-700 text-white"
+                        >
+                          <CheckCircle className="h-3 w-3 mr-1" />
+                          Approve
                 </Button>
               )}
-            </CardContent>
-          </Card>
-        ) : (
-          filteredTestimonials.map(testimonial => (
-            <Card key={testimonial.id}>
-              <CardContent className="p-6">
-                <div className="flex justify-between items-start mb-4">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2">
-                      <h3 className="font-semibold">{testimonial.name}</h3>
-                      {testimonial.video_url && (
-                        <Video className="h-4 w-4 text-blue-600" />
-                      )}
-                      <Badge
-                        variant={testimonial.approved ? 'default' : 'secondary'}
-                      >
-                        {testimonial.approved ? 'Approved' : 'Pending'}
-                      </Badge>
-                    </div>
-                    <p className="text-gray-700 mb-2 line-clamp-3">{testimonial.text}</p>
-                    <p className="text-sm text-gray-500">
-                      {formatDate(testimonial.created_at)}
-                    </p>
-                  </div>
-                  <div className="flex gap-2 ml-4">
-                    {!testimonial.approved && (
+                      
                       <Button
-                        onClick={() => handleApprove(testimonial.id)}
                         size="sm"
                         variant="outline"
-                        className="text-green-600 hover:bg-green-50"
+                        onClick={() => handleDelete(testimonial.id)}
+                        className="text-red-600 border-red-200 hover:bg-red-50"
                       >
-                        <CheckCircle className="h-4 w-4" />
+                        <Trash2 className="h-3 w-3" />
                       </Button>
-                    )}
-                    <Button
-                      onClick={() => handleDelete(testimonial.id)}
-                      size="sm"
-                      variant="outline"
-                      className="text-red-600 hover:bg-red-50"
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
+                    </div>
                   </div>
-                </div>
-                {testimonial.video_url && (
-                  <div className="mt-4">
-                    <video
-                      src={testimonial.video_url}
-                      controls
-                      className="w-full max-w-md h-auto rounded-lg"
-                    />
+            </CardContent>
+          </Card>
+            ))}
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {filteredTestimonials.map((testimonial) => (
+              <Card key={testimonial.id} className="bg-white border-0 shadow-md hover:shadow-lg transition-all duration-300">
+              <CardContent className="p-6">
+                  <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                      <div className="flex items-center gap-4 mb-3">
+                        <div className="h-10 w-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-semibold">
+                          {testimonial.name.charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                          <p className="font-semibold text-gray-900">{testimonial.name}</p>
+                          <p className="text-sm text-gray-500">{formatDate(testimonial.created_at)} • {getTimeAgo(testimonial.created_at)}</p>
+                        </div>
+                        <Badge 
+                          variant={testimonial.approved ? "default" : "secondary"}
+                          className={testimonial.approved ? "bg-green-100 text-green-800" : "bg-orange-100 text-orange-800"}
+                        >
+                          {testimonial.approved ? 'Approved' : 'Pending'}
+                        </Badge>
+                      </div>
+                      
+                      <p className="text-gray-700 mb-3">&ldquo;{testimonial.text}&rdquo;</p>
+                      
+                      {testimonial.video_url && (
+                        <div className="flex items-center text-sm text-blue-600 mb-3">
+                          <Video className="h-4 w-4 mr-1" />
+                          Video testimonial available
+                        </div>
+                      )}
+                    </div>
+                    
+                    <div className="flex items-center gap-2 ml-4">
+                    {!testimonial.approved && (
+                        <Button
+                          size="sm"
+                          onClick={() => handleApprove(testimonial.id)}
+                          className="bg-green-600 hover:bg-green-700 text-white"
+                        >
+                          <CheckCircle className="h-3 w-3 mr-1" />
+                          Approve
+                        </Button>
+                      )}
+                      
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleDelete(testimonial.id)}
+                        className="text-red-600 border-red-200 hover:bg-red-50"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
                   </div>
                 )}
               </CardContent>
             </Card>
-          ))
-        )}
-      </div>
-    </div>
   );
 }
