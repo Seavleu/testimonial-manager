@@ -8,7 +8,7 @@ import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { Code, Eye, Settings, RefreshCw, ExternalLink, Copy, Play, AlertCircle } from 'lucide-react'
+import { Code, Eye, Settings, RefreshCw, ExternalLink, Copy, Play, AlertCircle, Zap, Globe, Monitor, Smartphone } from 'lucide-react'
 import { Header } from '@/components/layout/header'
 import { useToast } from '@/hooks/use-toast'
 import { useAuth } from '@/lib/auth'
@@ -275,9 +275,9 @@ export default function WidgetTestPage() {
 
   if (!mounted) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
         <Header />
-        <div className="max-w-7xl mx-auto p-6">
+        <div className="container mx-auto px-4 py-8 max-w-7xl">
           <div className="animate-pulse">
             <div className="h-8 bg-gray-200 rounded mb-2"></div>
             <div className="h-4 bg-gray-200 rounded w-2/3"></div>
@@ -288,22 +288,46 @@ export default function WidgetTestPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
       <Header />
-      <div className="max-w-7xl mx-auto p-6">
+      
+      <main className="container mx-auto px-4 py-8 max-w-7xl">
+        {/* Welcome Section */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            Testimonial Widget Test
-          </h1>
-          <p className="text-gray-600">
-            Test and preview your testimonial widget with live data from your API
-          </p>
-          <div className="flex items-center gap-2 mt-2">
-            <span className="text-sm text-gray-600">API Status:</span>
-            <span className={`text-sm font-medium ${getApiStatusColor()}`}>
-              {getApiStatusText()}
-            </span>
-            <span className="text-sm text-gray-500">({widgetConfig.apiUrl})</span>
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <h1 className="text-4xl font-bold text-gray-900 mb-2">
+                Widget Test Center
+              </h1>
+              <p className="text-gray-600 text-lg">
+                Test and preview your testimonial widget with live data from your API
+              </p>
+              <div className="flex items-center gap-2 mt-2">
+                <span className="text-sm text-gray-600">API Status:</span>
+                <span className={`text-sm font-medium ${getApiStatusColor()}`}>
+                  {getApiStatusText()}
+                </span>
+                <span className="text-sm text-gray-500">({widgetConfig.apiUrl})</span>
+              </div>
+            </div>
+            <div className="flex gap-3 mt-4 lg:mt-0">
+              <Button 
+                onClick={fetchTestimonials}
+                disabled={loading}
+                className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white shadow-lg"
+              >
+                <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+                {loading ? 'Loading...' : 'Fetch Data'}
+              </Button>
+              <Button 
+                variant="outline"
+                onClick={openCollectionPage}
+                className="border-2 hover:bg-gray-50"
+              >
+                <ExternalLink className="h-4 w-4 mr-2" />
+                Collection Page
+              </Button>
+            </div>
           </div>
         </div>
 
@@ -330,45 +354,39 @@ export default function WidgetTestPage() {
           </Card>
         )}
 
-        {/* Quick Actions */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-          <Card>
-            <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-blue-600">{testimonials.length}</div>
+        {/* Quick Stats */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+          <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-lg">
+            <CardContent className="p-6 text-center">
+              <div className="text-3xl font-bold text-blue-600 mb-2">{testimonials.length}</div>
               <div className="text-sm text-gray-600">Live Testimonials</div>
             </CardContent>
           </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <Button onClick={fetchTestimonials} disabled={loading} className="w-full" size="sm">
-                <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-                {loading ? 'Loading...' : 'Fetch Data'}
-              </Button>
+          <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-lg">
+            <CardContent className="p-6 text-center">
+              <div className="text-3xl font-bold text-green-600 mb-2">{widgetConfig.limit}</div>
+              <div className="text-sm text-gray-600">Widget Limit</div>
             </CardContent>
           </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <Button onClick={openCollectionPage} variant="outline" className="w-full" size="sm">
-                <ExternalLink className="h-4 w-4 mr-2" />
-                Collection Page
-              </Button>
+          <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-lg">
+            <CardContent className="p-6 text-center">
+              <div className="text-3xl font-bold text-purple-600 mb-2">{widgetConfig.layout}</div>
+              <div className="text-sm text-gray-600">Layout Type</div>
             </CardContent>
           </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <Button onClick={refreshWidgets} variant="outline" className="w-full" size="sm">
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Refresh Widgets
-              </Button>
+          <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-lg">
+            <CardContent className="p-6 text-center">
+              <div className="text-3xl font-bold text-amber-600 mb-2">{widgetConfig.theme}</div>
+              <div className="text-sm text-gray-600">Theme</div>
             </CardContent>
           </Card>
         </div>
 
         {/* Configuration Panel */}
-        <Card className="mb-8">
+        <Card className="mb-8 bg-white/80 backdrop-blur-sm border-0 shadow-lg">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Settings className="h-5 w-5" />
+              <Settings className="h-5 w-5 text-blue-600" />
               Widget Configuration
             </CardTitle>
             <CardDescription>
@@ -376,25 +394,26 @@ export default function WidgetTestPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               <div>
-                <Label htmlFor="userId">User ID</Label>
+                <Label htmlFor="userId" className="text-sm font-medium text-gray-700">User ID</Label>
                 <Input
                   id="userId"
                   value={widgetConfig.userId}
                   onChange={(e) => setWidgetConfig(prev => ({ ...prev, userId: e.target.value }))}
                   placeholder="Enter user ID"
+                  className="mt-1"
                 />
                 <p className="text-xs text-gray-500 mt-1">Your unique user identifier</p>
               </div>
 
               <div>
-                <Label htmlFor="theme">Theme</Label>
+                <Label htmlFor="theme" className="text-sm font-medium text-gray-700">Theme</Label>
                 <Select
                   value={widgetConfig.theme}
                   onValueChange={(value) => setWidgetConfig(prev => ({ ...prev, theme: value }))}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className="mt-1">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -405,12 +424,12 @@ export default function WidgetTestPage() {
               </div>
 
               <div>
-                <Label htmlFor="layout">Layout</Label>
+                <Label htmlFor="layout" className="text-sm font-medium text-gray-700">Layout</Label>
                 <Select
                   value={widgetConfig.layout}
                   onValueChange={(value) => setWidgetConfig(prev => ({ ...prev, layout: value }))}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className="mt-1">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -421,7 +440,7 @@ export default function WidgetTestPage() {
               </div>
 
               <div>
-                <Label htmlFor="limit">Number to Show</Label>
+                <Label htmlFor="limit" className="text-sm font-medium text-gray-700">Number to Show</Label>
                 <Input
                   id="limit"
                   type="number"
@@ -429,35 +448,36 @@ export default function WidgetTestPage() {
                   max="20"
                   value={widgetConfig.limit}
                   onChange={(e) => setWidgetConfig(prev => ({ ...prev, limit: parseInt(e.target.value) || 4 }))}
+                  className="mt-1"
                 />
                 <p className="text-xs text-gray-500 mt-1">Maximum testimonials to display</p>
               </div>
 
-              <div className="flex items-center space-x-2">
+              <div className="flex items-center space-x-3">
                 <Switch
                   id="showVideos"
                   checked={widgetConfig.showVideos}
                   onCheckedChange={(checked) => setWidgetConfig(prev => ({ ...prev, showVideos: checked }))}
                 />
-                <Label htmlFor="showVideos">Show Video Testimonials</Label>
+                <Label htmlFor="showVideos" className="text-sm font-medium text-gray-700">Show Video Testimonials</Label>
               </div>
 
-              <div className="flex items-center space-x-2">
+              <div className="flex items-center space-x-3">
                 <Switch
                   id="showDates"
                   checked={widgetConfig.showDates}
                   onCheckedChange={(checked) => setWidgetConfig(prev => ({ ...prev, showDates: checked }))}
                 />
-                <Label htmlFor="showDates">Show Dates</Label>
+                <Label htmlFor="showDates" className="text-sm font-medium text-gray-700">Show Dates</Label>
               </div>
 
-              <div className="flex items-center space-x-2">
+              <div className="flex items-center space-x-3">
                 <Switch
                   id="autoRefresh"
                   checked={widgetConfig.autoRefresh}
                   onCheckedChange={(checked) => setWidgetConfig(prev => ({ ...prev, autoRefresh: checked }))}
                 />
-                <Label htmlFor="autoRefresh">Auto Refresh (30s)</Label>
+                <Label htmlFor="autoRefresh" className="text-sm font-medium text-gray-700">Auto Refresh (30s)</Label>
               </div>
             </div>
           </CardContent>
@@ -466,10 +486,10 @@ export default function WidgetTestPage() {
         {/* Widget Previews */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
           {/* Cards Layout - Light Theme */}
-          <Card>
+          <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-lg">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Eye className="h-5 w-5" />
+                <Monitor className="h-5 w-5 text-blue-600" />
                 Cards Layout - Light Theme
               </CardTitle>
               <CardDescription>
@@ -477,17 +497,17 @@ export default function WidgetTestPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div id="widget-cards-light" className="min-h-[400px] border rounded-lg p-4">
+              <div id="widget-cards-light" className="min-h-[400px] border-2 border-dashed border-gray-300 rounded-lg p-4 bg-white">
                 {/* Widget will be rendered here */}
               </div>
             </CardContent>
           </Card>
 
           {/* Cards Layout - Dark Theme */}
-          <Card>
+          <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-lg">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Eye className="h-5 w-5" />
+                <Monitor className="h-5 w-5 text-gray-600" />
                 Cards Layout - Dark Theme
               </CardTitle>
               <CardDescription>
@@ -495,17 +515,17 @@ export default function WidgetTestPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div id="widget-cards-dark" className="min-h-[400px] border rounded-lg p-4">
+              <div id="widget-cards-dark" className="min-h-[400px] border-2 border-dashed border-gray-300 rounded-lg p-4 bg-gray-900">
                 {/* Widget will be rendered here */}
               </div>
             </CardContent>
           </Card>
 
           {/* List Layout - Light Theme */}
-          <Card>
+          <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-lg">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Eye className="h-5 w-5" />
+                <Smartphone className="h-5 w-5 text-green-600" />
                 List Layout - Light Theme
               </CardTitle>
               <CardDescription>
@@ -513,17 +533,17 @@ export default function WidgetTestPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div id="widget-list-light" className="min-h-[400px] border rounded-lg p-4">
+              <div id="widget-list-light" className="min-h-[400px] border-2 border-dashed border-gray-300 rounded-lg p-4 bg-white">
                 {/* Widget will be rendered here */}
               </div>
             </CardContent>
           </Card>
 
           {/* List Layout - Dark Theme */}
-          <Card>
+          <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-lg">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Eye className="h-5 w-5" />
+                <Smartphone className="h-5 w-5 text-gray-600" />
                 List Layout - Dark Theme
               </CardTitle>
               <CardDescription>
@@ -531,7 +551,7 @@ export default function WidgetTestPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div id="widget-list-dark" className="min-h-[400px] border rounded-lg p-4">
+              <div id="widget-list-dark" className="min-h-[400px] border-2 border-dashed border-gray-300 rounded-lg p-4 bg-gray-900">
                 {/* Widget will be rendered here */}
               </div>
             </CardContent>
@@ -539,28 +559,28 @@ export default function WidgetTestPage() {
         </div>
 
         {/* Embed Test */}
-        <Card className="mb-8">
+        <Card className="mb-8 bg-white/80 backdrop-blur-sm border-0 shadow-lg">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Play className="h-5 w-5" />
+              <Play className="h-5 w-5 text-purple-600" />
               Live Embed Test
             </CardTitle>
             <CardDescription>
-              This widget uses the exact same embed code that you'll use on your website
+              This widget uses the exact same embed code that you&apos;ll use on your website
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div id="widget-embed-test" className="min-h-[300px] border-2 border-dashed border-gray-300 rounded-lg p-4">
+            <div id="widget-embed-test" className="min-h-[300px] border-2 border-dashed border-purple-300 rounded-lg p-4 bg-gradient-to-br from-purple-50 to-pink-50">
               {/* Embed widget will be rendered here */}
             </div>
           </CardContent>
         </Card>
 
         {/* Embed Code */}
-        <Card className="mb-8">
+        <Card className="mb-8 bg-white/80 backdrop-blur-sm border-0 shadow-lg">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Code className="h-5 w-5" />
+              <Code className="h-5 w-5 text-amber-600" />
               Embed Code
             </CardTitle>
             <CardDescription>
@@ -568,15 +588,15 @@ export default function WidgetTestPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="bg-gray-900 text-green-400 p-4 rounded-lg font-mono text-sm overflow-x-auto mb-4">
+            <div className="bg-gray-900 text-green-400 p-4 rounded-lg font-mono text-sm overflow-x-auto mb-4 border border-gray-700">
               <pre>{getEmbedCode()}</pre>
             </div>
-            <div className="flex gap-2">
-              <Button onClick={copyEmbedCode}>
+            <div className="flex gap-3">
+              <Button onClick={copyEmbedCode} className="bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white shadow-lg">
                 <Copy className="h-4 w-4 mr-2" />
                 Copy Embed Code
               </Button>
-              <Button variant="outline" onClick={() => window.open('/widget.js', '_blank')}>
+              <Button variant="outline" onClick={() => window.open('/widget.js', '_blank')} className="border-2 hover:bg-gray-50">
                 <ExternalLink className="h-4 w-4 mr-2" />
                 View Widget.js
               </Button>
@@ -585,10 +605,10 @@ export default function WidgetTestPage() {
         </Card>
 
         {/* Live API Data */}
-        <Card className="mb-8">
+        <Card className="mb-8 bg-white/80 backdrop-blur-sm border-0 shadow-lg">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <RefreshCw className="h-5 w-5" />
+              <Zap className="h-5 w-5 text-green-600" />
               Live API Data
             </CardTitle>
             <CardDescription>
@@ -606,7 +626,7 @@ export default function WidgetTestPage() {
                 <div className="text-4xl mb-4">💬</div>
                 <p className="text-gray-600 mb-4">No approved testimonials found for this user ID.</p>
                 <div className="space-y-2">
-                  <Button onClick={openCollectionPage} size="sm">
+                  <Button onClick={openCollectionPage} size="sm" className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white shadow-lg">
                     <ExternalLink className="h-4 w-4 mr-2" />
                     Create Test Testimonial
                   </Button>
@@ -618,7 +638,7 @@ export default function WidgetTestPage() {
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {testimonials.slice(0, 6).map((testimonial: any) => (
-                  <div key={testimonial.id} className="border rounded-lg p-4 bg-white">
+                  <div key={testimonial.id} className="border rounded-lg p-4 bg-white shadow-sm hover:shadow-md transition-shadow">
                     <div className="flex items-start justify-between mb-2">
                       <span className="font-medium text-gray-900">{testimonial.name}</span>
                       <div className="flex gap-1">
@@ -648,7 +668,7 @@ export default function WidgetTestPage() {
               <span className="text-sm text-gray-600">
                 Total: {testimonials.length} approved testimonials
               </span>
-              <Button onClick={fetchTestimonials} variant="outline" size="sm" disabled={loading}>
+              <Button onClick={fetchTestimonials} variant="outline" size="sm" disabled={loading} className="border-2 hover:bg-gray-50">
                 <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
                 Refresh Data
               </Button>
@@ -670,7 +690,7 @@ export default function WidgetTestPage() {
             </CardContent>
           </Card>
         )}
-      </div>
+      </main>
     </div>
   )
 }

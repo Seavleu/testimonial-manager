@@ -1,11 +1,12 @@
 from fastapi import FastAPI, HTTPException, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from supabase import create_client, Client
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
 import uuid
-from typing import Optional
+from typing import Optional, Dict, Any
 from dotenv import load_dotenv
+from notification_service import NotificationService
 
 # Load environment variables
 load_dotenv()
@@ -278,6 +279,19 @@ async def submit_testimonial(
                     status_code=500,
                     detail=f"Failed to save testimonial: {db_response.status_code}"
                 )
+            
+            # Trigger notification for new testimonial
+            try:
+                notification_service = NotificationService(supabase)
+                notification_data = {
+                    "name": name,
+                    "text": text,
+                    "id": testimonial_id
+                }
+                await notification_service.trigger_new_testimonial_notification(user_id, notification_data)
+            except Exception as notification_error:
+                print(f"Notification error (non-blocking): {str(notification_error)}")
+                # Don't fail the testimonial submission if notification fails
             
             return {
                 "success": True,
@@ -723,6 +737,412 @@ async def delete_personal_message(message_id: str):
         raise HTTPException(
             status_code=500,
             detail=f"Failed to delete personal message: {str(e)}"
+        )
+
+# Analytics Endpoints
+@app.get("/analytics/{user_id}/stats")
+async def get_analytics_stats(user_id: str):
+    """
+    Get comprehensive analytics statistics for a user
+    
+    Args:
+        user_id: The UUID of the user
+    
+    Returns:
+        Analytics statistics including totals, rates, and trends
+    """
+    try:
+        supabase = get_supabase_client()
+        
+        # Get all testimonials for the user
+        response = supabase.table('testimonials').select('*').eq('user_id', user_id).execute()
+        testimonials = response.data or []
+        
+        if not testimonials:
+            return {
+                "success": True,
+                "stats": {
+                    "totalTestimonials": 0,
+                    "approvedTestimonials": 0,
+                    "pendingTestimonials": 0,
+                    "thisMonth": 0,
+                    "approvalRate": 0,
+                    "growthRate": 0,
+                    "averageResponseTime": 0,
+                    "totalViews": 0,
+                    "monthlyTrends": [],
+                    "approvalTrends": []
+                }
+            }
+        
+        # Calculate basic stats
+        total_testimonials = len(testimonials)
+        approved_testimonials = len([t for t in testimonials if t.get('approved', False)])
+        pending_testimonials = total_testimonials - approved_testimonials
+        approval_rate = (approved_testimonials / total_testimonials * 100) if total_testimonials > 0 else 0
+        
+        # Calculate this month's testimonials
+        current_month = datetime.utcnow().month
+        current_year = datetime.utcnow().year
+        this_month = 0
+        for t in testimonials:
+            try:
+                created_date = datetime.fromisoformat(t['created_at'].replace('Z', '+00:00'))
+                if created_date.month == current_month and created_date.year == current_year:
+                    this_month += 1
+            except (ValueError, TypeError, KeyError):
+                continue
+        
+        # Calculate growth rate (comparing to previous month)
+        previous_month = current_month - 1 if current_month > 1 else 12
+        previous_year = current_year if current_month > 1 else current_year - 1
+        previous_month_count = 0
+        for t in testimonials:
+            try:
+                created_date = datetime.fromisoformat(t['created_at'].replace('Z', '+00:00'))
+                if created_date.month == previous_month and created_date.year == previous_year:
+                    previous_month_count += 1
+            except (ValueError, TypeError, KeyError):
+                continue
+        
+        growth_rate = 0
+        if previous_month_count > 0:
+            growth_rate = ((this_month - previous_month_count) / previous_month_count) * 100
+        elif this_month > 0:
+            growth_rate = 100  # New growth
+        
+        # Calculate average response time (time between creation and approval)
+        approved_with_dates = []
+        total_response_time = 0
+        
+        for testimonial in testimonials:
+            if (testimonial.get('approved', False) and 
+                testimonial.get('created_at') and 
+                testimonial.get('updated_at')):
+                try:
+                    created = datetime.fromisoformat(testimonial['created_at'].replace('Z', '+00:00'))
+                    updated = datetime.fromisoformat(testimonial['updated_at'].replace('Z', '+00:00'))
+                    response_time = (updated - created).days
+                    total_response_time += response_time
+                    approved_with_dates.append(testimonial)
+                except (ValueError, TypeError):
+                    continue
+        
+        average_response_time = total_response_time / len(approved_with_dates) if approved_with_dates else 0
+        
+        # Calculate monthly trends (last 6 months)
+        monthly_trends = []
+        for i in range(6):
+            month = current_month - i
+            year = current_year
+            if month <= 0:
+                month += 12
+                year -= 1
+            
+            month_count = 0
+            for t in testimonials:
+                try:
+                    created_date = datetime.fromisoformat(t['created_at'].replace('Z', '+00:00'))
+                    if created_date.month == month and created_date.year == year:
+                        month_count += 1
+                except (ValueError, TypeError, KeyError):
+                    continue
+            
+            monthly_trends.append({
+                "month": f"{year}-{month:02d}",
+                "count": month_count
+            })
+        
+        monthly_trends.reverse()  # Show oldest first
+        
+        # Calculate approval trends (last 6 months)
+        approval_trends = []
+        for i in range(6):
+            month = current_month - i
+            year = current_year
+            if month <= 0:
+                month += 12
+                year -= 1
+            
+            month_testimonials = []
+            for t in testimonials:
+                try:
+                    created_date = datetime.fromisoformat(t['created_at'].replace('Z', '+00:00'))
+                    if created_date.month == month and created_date.year == year:
+                        month_testimonials.append(t)
+                except (ValueError, TypeError, KeyError):
+                    continue
+            
+            month_approved = len([t for t in month_testimonials if t.get('approved', False)])
+            month_rate = (month_approved / len(month_testimonials) * 100) if month_testimonials else 0
+            
+            approval_trends.append({
+                "month": f"{year}-{month:02d}",
+                "rate": round(month_rate, 1)
+            })
+        
+        approval_trends.reverse()  # Show oldest first
+        
+        # Mock total views (in real app, this would come from analytics tracking)
+        total_views = total_testimonials * 6  # Rough estimate
+        
+        return {
+            "success": True,
+            "stats": {
+                "totalTestimonials": total_testimonials,
+                "approvedTestimonials": approved_testimonials,
+                "pendingTestimonials": pending_testimonials,
+                "thisMonth": this_month,
+                "approvalRate": round(approval_rate, 1),
+                "growthRate": round(growth_rate, 1),
+                "averageResponseTime": round(average_response_time, 1),
+                "totalViews": total_views,
+                "monthlyTrends": monthly_trends,
+                "approvalTrends": approval_trends
+            }
+        }
+        
+    except Exception as e:
+        print(f"Error getting analytics stats: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get analytics stats: {str(e)}"
+        )
+
+@app.get("/analytics/{user_id}/timeline")
+async def get_analytics_timeline(user_id: str, days: int = 30):
+    """
+    Get timeline data for analytics charts
+    
+    Args:
+        user_id: The UUID of the user
+        days: Number of days to look back (default 30)
+    
+    Returns:
+        Timeline data for charts
+    """
+    try:
+        supabase = get_supabase_client()
+        
+        # Get testimonials from the last N days
+        cutoff_date = datetime.utcnow() - timedelta(days=days)
+        
+        response = supabase.table('testimonials').select('*').eq('user_id', user_id).gte('created_at', cutoff_date.isoformat()).execute()
+        testimonials = response.data or []
+        
+        # Group by date
+        timeline_data = {}
+        for testimonial in testimonials:
+            try:
+                date = datetime.fromisoformat(testimonial['created_at'].replace('Z', '+00:00')).strftime('%Y-%m-%d')
+                if date not in timeline_data:
+                    timeline_data[date] = {
+                        "date": date,
+                        "total": 0,
+                        "approved": 0,
+                        "pending": 0
+                    }
+                
+                timeline_data[date]["total"] += 1
+                if testimonial.get('approved', False):
+                    timeline_data[date]["approved"] += 1
+                else:
+                    timeline_data[date]["pending"] += 1
+            except (ValueError, TypeError, KeyError):
+                continue
+        
+        # Convert to sorted list
+        timeline_list = sorted(timeline_data.values(), key=lambda x: x['date'])
+        
+        return {
+            "success": True,
+            "timeline": timeline_list
+        }
+        
+    except Exception as e:
+        print(f"Error getting analytics timeline: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get analytics timeline: {str(e)}"
+        )
+
+# Notification endpoints
+@app.get("/notifications/preferences/{user_id}")
+async def get_notification_preferences(user_id: str):
+    """
+    Get notification preferences for a user
+    
+    Args:
+        user_id: The UUID of the user
+    
+    Returns:
+        User's notification preferences
+    """
+    try:
+        supabase = get_supabase_client()
+        notification_service = NotificationService(supabase)
+        
+        result = await notification_service.get_notification_preferences(user_id)
+        
+        if result['success']:
+            return result
+        else:
+            raise HTTPException(
+                status_code=404,
+                detail=result['error']
+            )
+            
+    except Exception as e:
+        print(f"Error getting notification preferences: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get notification preferences: {str(e)}"
+        )
+
+@app.put("/notifications/preferences/{user_id}")
+async def update_notification_preferences(user_id: str, preferences: Dict[str, Any]):
+    """
+    Update notification preferences for a user
+    
+    Args:
+        user_id: The UUID of the user
+        preferences: Updated preferences data
+    
+    Returns:
+        Updated notification preferences
+    """
+    try:
+        supabase = get_supabase_client()
+        notification_service = NotificationService(supabase)
+        
+        result = await notification_service.update_notification_preferences(user_id, preferences)
+        
+        if result['success']:
+            return result
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=result['error']
+            )
+            
+    except Exception as e:
+        print(f"Error updating notification preferences: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to update notification preferences: {str(e)}"
+        )
+
+@app.post("/notifications/test/{user_id}")
+async def test_notification(user_id: str, notification_type: str = "new_testimonial"):
+    """
+    Test notification system for a user
+    
+    Args:
+        user_id: The UUID of the user
+        notification_type: Type of notification to test
+    
+    Returns:
+        Test result
+    """
+    try:
+        supabase = get_supabase_client()
+        notification_service = NotificationService(supabase)
+        
+        if notification_type == "new_testimonial":
+            test_data = {
+                "name": "Test User",
+                "text": "This is a test testimonial for notification testing.",
+                "id": str(uuid.uuid4())
+            }
+            result = await notification_service.trigger_new_testimonial_notification(user_id, test_data)
+        elif notification_type == "weekly_summary":
+            result = await notification_service.send_weekly_summary(user_id)
+        elif notification_type == "pending_reminder":
+            result = await notification_service.send_pending_reminder(user_id)
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid notification type: {notification_type}"
+            )
+        
+        if result['success']:
+            return result
+        else:
+            raise HTTPException(
+                status_code=500,
+                detail=result['error']
+            )
+            
+    except Exception as e:
+        print(f"Error testing notification: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to test notification: {str(e)}"
+        )
+
+@app.get("/notifications/logs/{user_id}")
+async def get_notification_logs(user_id: str, limit: int = 50):
+    """
+    Get notification logs for a user
+    
+    Args:
+        user_id: The UUID of the user
+        limit: Maximum number of logs to return
+    
+    Returns:
+        Notification logs
+    """
+    try:
+        supabase = get_supabase_client()
+        notification_service = NotificationService(supabase)
+        
+        result = await notification_service.get_notification_logs(user_id, limit)
+        
+        if result['success']:
+            return result
+        else:
+            raise HTTPException(
+                status_code=500,
+                detail=result['error']
+            )
+            
+    except Exception as e:
+        print(f"Error getting notification logs: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get notification logs: {str(e)}"
+        )
+
+@app.post("/notifications/unsubscribe")
+async def unsubscribe_from_notifications(email: str):
+    """
+    Unsubscribe user from all notifications
+    
+    Args:
+        email: User's email address
+    
+    Returns:
+        Unsubscribe result
+    """
+    try:
+        supabase = get_supabase_client()
+        notification_service = NotificationService(supabase)
+        
+        result = await notification_service.unsubscribe_user(email)
+        
+        if result['success']:
+            return result
+        else:
+            raise HTTPException(
+                status_code=404,
+                detail=result['error']
+            )
+            
+    except Exception as e:
+        print(f"Error unsubscribing user: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to unsubscribe: {str(e)}"
         )
 
 if __name__ == "__main__":

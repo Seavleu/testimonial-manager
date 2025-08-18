@@ -1,14 +1,19 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth'
 import { Header } from '@/components/layout/header'
 import { TestimonialsTable } from '@/components/dashboard/testimonials-table'
+import { MetricsCard } from '@/components/dashboard/metrics-card'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
+import { analyticsService, AnalyticsStats } from '@/lib/analytics'
+import { GrowthChart } from '@/components/dashboard/growth-chart'
+import { PerformanceChart } from '@/components/dashboard/performance-chart'
+import { TimelineChart } from '@/components/dashboard/timeline-chart'
 import { 
   BarChart3, 
   Users, 
@@ -24,30 +29,30 @@ import {
   Clock,
   Zap,
   Target,
-  Award
+  Award,
+  Calendar,
+  RefreshCw,
+  AlertCircle
 } from 'lucide-react'
-
-interface DashboardStats {
-  total: number
-  approved: number
-  pending: number
-  thisMonth: number
-  approvalRate: number
-  growthRate: number
-}
 
 export default function DashboardPage() {
   const { user, loading } = useAuth()
   const router = useRouter()
   const [mounted, setMounted] = useState(false)
-  const [stats, setStats] = useState<DashboardStats>({
+  const [stats, setStats] = useState<AnalyticsStats>({
     total: 0,
     approved: 0,
     pending: 0,
-    thisMonth: 0,
+    monthlyGrowth: 0,
     approvalRate: 0,
-    growthRate: 0
+    averageResponseTime: 0,
+    monthlyTrends: [],
+    approvalTrends: []
   })
+  const [timeline, setTimeline] = useState<any[]>([])
+  const [loadingStats, setLoadingStats] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [lastRefresh, setLastRefresh] = useState<Date>(new Date())
 
   useEffect(() => {
     setMounted(true)
@@ -59,22 +64,69 @@ export default function DashboardPage() {
     }
   }, [user, loading, router, mounted])
 
-  // Mock stats - in real app, fetch from API
-  useEffect(() => {
-    if (mounted && user) {
-      // Simulate loading stats
-      setTimeout(() => {
-        setStats({
-          total: 24,
-          approved: 18,
-          pending: 6,
-          thisMonth: 8,
-          approvalRate: 75,
-          growthRate: 12
-        })
-      }, 1000)
+  // Fetch real analytics data
+  const fetchDashboardStats = useCallback(async () => {
+    if (!mounted || !user?.id) {
+      console.log('No user ID available, skipping analytics fetch')
+      return
+    }
+
+    try {
+      setLoadingStats(true)
+      setError(null)
+
+      const [statsData, timelineData] = await Promise.all([
+        analyticsService.getAnalyticsStats(user.id),
+        analyticsService.getAnalyticsTimeline(user.id)
+      ])
+
+      setStats(statsData)
+      setTimeline(timelineData)
+      setLastRefresh(new Date())
+    } catch (err) {
+      console.error('Error fetching dashboard stats:', err)
+      
+      // Set fallback data instead of showing error
+      const fallbackStats: AnalyticsStats = {
+        total: 0,
+        approved: 0,
+        pending: 0,
+        monthlyGrowth: 0,
+        approvalRate: 0,
+        averageResponseTime: 0,
+        monthlyTrends: [],
+        approvalTrends: []
+      }
+      
+      const fallbackTimeline: any[] = [] // Assuming TimelineData is any[] or similar
+      
+      setStats(fallbackStats)
+      setTimeline(fallbackTimeline)
+      setLastRefresh(new Date())
+      
+      // Only show error for non-connection issues
+      if (err instanceof Error && !err.message.includes('Failed to fetch')) {
+        setError('Analytics data temporarily unavailable')
+      }
+    } finally {
+      setLoadingStats(false)
     }
   }, [mounted, user])
+
+  useEffect(() => {
+    fetchDashboardStats()
+  }, [fetchDashboardStats])
+
+  // Auto-refresh every 10 minutes
+  useEffect(() => {
+    if (!mounted || !user) return
+
+    const interval = setInterval(() => {
+      fetchDashboardStats()
+    }, 10 * 60 * 1000) // 10 minutes
+
+    return () => clearInterval(interval)
+  }, [fetchDashboardStats, mounted, user])
 
   if (loading || !mounted) {
     return (
@@ -101,11 +153,16 @@ export default function DashboardPage() {
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between">
             <div>
               <h1 className="text-4xl font-bold text-gray-900 mb-2">
-                Welcome back, {user.email?.split('@')[0]}! 👋
+                Welcome back, {user.email?.split(`@`)[0]}! 👋
               </h1>
               <p className="text-gray-600 text-lg">
                 Here's what's happening with your testimonials today
               </p>
+              {lastRefresh && (
+                <p className="text-sm text-gray-500 mt-1">
+                  Last updated: {lastRefresh.toLocaleTimeString()}
+                </p>
+              )}
             </div>
             <div className="flex gap-3 mt-4 lg:mt-0">
               <Button 
@@ -123,84 +180,103 @@ export default function DashboardPage() {
                 <Eye className="h-4 w-4 mr-2" />
                 Preview Widget
               </Button>
+              <Button 
+                variant="outline"
+                onClick={fetchDashboardStats}
+                disabled={loadingStats}
+                className="border-2 hover:bg-gray-50"
+              >
+                <RefreshCw className={`h-4 w-4 mr-2 ${loadingStats ? 'animate-spin' : ''}`} />
+                {loadingStats ? 'Refreshing...' : 'Refresh'}
+              </Button>
             </div>
           </div>
         </div>
 
+        {/* Error Display */}
+        {error && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+            <div className="flex items-center">
+              <AlertCircle className="h-5 w-5 text-red-600 mr-2" />
+              <p className="text-red-800 font-medium">Error loading dashboard stats</p>
+            </div>
+            <p className="text-red-600 text-sm mt-1">{error}</p>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={fetchDashboardStats}
+              className="mt-2 border-red-200 text-red-700 hover:bg-red-50"
+            >
+              Try Again
+            </Button>
+          </div>
+        )}
+
         {/* Stats Overview */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-lg hover:shadow-xl transition-all duration-300">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600 mb-1">Total Testimonials</p>
-                  <p className="text-3xl font-bold text-gray-900">{stats.total}</p>
-                  <div className="flex items-center mt-2">
-                    <TrendingUp className="h-4 w-4 text-green-500 mr-1" />
-                    <span className="text-sm text-green-600">+{stats.growthRate}% this month</span>
-                  </div>
-                </div>
-                <div className="h-12 w-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center">
-                  <MessageSquare className="h-6 w-6 text-white" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          
-          <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-lg hover:shadow-xl transition-all duration-300">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600 mb-1">Approved</p>
-                  <p className="text-3xl font-bold text-gray-900">{stats.approved}</p>
-                  <div className="flex items-center mt-2">
-                    <CheckCircle className="h-4 w-4 text-green-500 mr-1" />
-                    <span className="text-sm text-green-600">{stats.approvalRate}% approval rate</span>
-                  </div>
-                </div>
-                <div className="h-12 w-12 bg-gradient-to-br from-green-500 to-green-600 rounded-xl flex items-center justify-center">
-                  <Star className="h-6 w-6 text-white" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          
-          <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-lg hover:shadow-xl transition-all duration-300">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600 mb-1">Pending Review</p>
-                  <p className="text-3xl font-bold text-gray-900">{stats.pending}</p>
-                  <div className="flex items-center mt-2">
-                    <Clock className="h-4 w-4 text-orange-500 mr-1" />
-                    <span className="text-sm text-orange-600">Needs attention</span>
-                  </div>
-                </div>
-                <div className="h-12 w-12 bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl flex items-center justify-center">
-                  <Users className="h-6 w-6 text-white" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          
-          <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-lg hover:shadow-xl transition-all duration-300">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600 mb-1">This Month</p>
-                  <p className="text-3xl font-bold text-gray-900">{stats.thisMonth}</p>
-                  <div className="flex items-center mt-2">
-                    <Zap className="h-4 w-4 text-purple-500 mr-1" />
-                    <span className="text-sm text-purple-600">Active growth</span>
-                  </div>
-                </div>
-                <div className="h-12 w-12 bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl flex items-center justify-center">
-                  <BarChart3 className="h-6 w-6 text-white" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <MetricsCard
+            title="Total Testimonials"
+            value={stats.total}
+            description="All-time testimonials"
+            icon={MessageSquare}
+            loading={loadingStats}
+            trend={{
+              value: Math.round(stats.monthlyGrowth),
+              isPositive: stats.monthlyGrowth >= 0,
+              label: 'this month'
+            }}
+            className="bg-white/80 backdrop-blur-sm border-0 shadow-lg hover:shadow-xl transition-all duration-300"
+          />
+          <MetricsCard
+            title="Approved"
+            value={stats.approved}
+            description="Published testimonials"
+            icon={Star}
+            loading={loadingStats}
+            className="bg-white/80 backdrop-blur-sm border-0 shadow-lg hover:shadow-xl transition-all duration-300"
+          />
+          <MetricsCard
+            title="Pending Review"
+            value={stats.pending}
+            description="Needs attention"
+            icon={Clock}
+            loading={loadingStats}
+            className="bg-white/80 backdrop-blur-sm border-0 shadow-lg hover:shadow-xl transition-all duration-300"
+          />
+          <MetricsCard
+            title="Approval Rate"
+            value={`${Math.round(stats.approvalRate)}%`}
+            description="Quality indicator"
+            icon={CheckCircle}
+            loading={loadingStats}
+            className="bg-white/80 backdrop-blur-sm border-0 shadow-lg hover:shadow-xl transition-all duration-300"
+          />
         </div>
+
+        {/* Analytics Charts */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+          <GrowthChart 
+            data={stats.monthlyTrends} 
+            loading={loadingStats}
+            className="bg-white/80 backdrop-blur-sm border-0 shadow-lg"
+          />
+          <PerformanceChart
+            approvalRate={stats.approvalRate}
+            averageResponseTime={stats.averageResponseTime}
+            totalTestimonials={stats.total}
+            approvedTestimonials={stats.approved}
+            pendingTestimonials={stats.pending}
+            loading={loadingStats}
+            className="bg-white/80 backdrop-blur-sm border-0 shadow-lg"
+          />
+        </div>
+
+        {/* Timeline Chart */}
+        <TimelineChart 
+          data={timeline} 
+          loading={loadingStats}
+          className="bg-white/80 backdrop-blur-sm border-0 shadow-lg mb-8"
+        />
 
         {/* Quick Actions */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
@@ -286,13 +362,13 @@ export default function DashboardPage() {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium text-gray-700">Collection Goal</span>
-                <span className="text-sm text-gray-600">{stats.thisMonth}/20 testimonials</span>
+                <span className="text-sm text-gray-600">{stats.total}/20 testimonials</span>
               </div>
-              <Progress value={(stats.thisMonth / 20) * 100} className="h-3" />
+              <Progress value={(stats.total / 20) * 100} className="h-3" />
               <div className="flex items-center justify-between text-sm">
                 <span className="text-gray-600">Target: 20 testimonials</span>
                 <span className="text-green-600 font-medium">
-                  {Math.round((stats.thisMonth / 20) * 100)}% complete
+                  {Math.round((stats.total / 20) * 100)}% complete
                 </span>
               </div>
             </div>

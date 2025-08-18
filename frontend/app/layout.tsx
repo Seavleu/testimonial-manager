@@ -2,6 +2,7 @@ import './globals.css'
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import { Toaster } from '@/components/ui/sonner'
+import { NotificationProvider } from '@/components/notifications/notification-manager'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -52,8 +53,10 @@ export default function RootLayout({
         <link rel="icon" href="/favicon.ico" />
       </head>
       <body className={inter.className} suppressHydrationWarning={true}>
-        {children}
-        <Toaster />
+        <NotificationProvider>
+          {children}
+          <Toaster />
+        </NotificationProvider>
       </body>
     </html>
   )
