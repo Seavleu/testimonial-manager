@@ -86,7 +86,12 @@ async def submit_testimonial(
     user_id: str = Form(...),
     name: str = Form(...),
     text: str = Form(...),
-    video: Optional[UploadFile] = File(None)
+    rating: Optional[int] = Form(None),
+    category: Optional[str] = Form(None),
+    email: Optional[str] = Form(None),
+    allow_sharing: Optional[bool] = Form(True),
+    video: Optional[UploadFile] = File(None),
+    photo: Optional[UploadFile] = File(None)
 ):
     """
     Submit a new testimonial
@@ -260,13 +265,93 @@ async def submit_testimonial(
                     detail="Failed to process video file. Please check the file format and try again."
                 )
         
+        # Handle photo upload if provided
+        photo_url = None
+        if photo and photo.filename:
+            # Validate photo file
+            valid_photo_types = ['image/jpeg', 'image/png', 'image/webp']
+            valid_photo_extensions = ['.jpg', '.jpeg', '.png', '.webp']
+            file_extension = '.' + photo.filename.split('.')[-1].lower() if photo.filename and '.' in photo.filename else ''
+            
+            if file_extension not in valid_photo_extensions:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Photo file type '{file_extension}' is not supported. Please use JPEG, PNG, or WebP format."
+                )
+            
+            if photo.content_type and photo.content_type not in valid_photo_types:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Photo file type '{photo.content_type}' is not supported. Please use JPEG, PNG, or WebP format."
+                )
+            
+            try:
+                file_content = await photo.read()
+                
+                if not file_content:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Photo file appears to be empty. Please select a valid photo file."
+                    )
+                
+                # Check file size (5MB limit for photos)
+                if len(file_content) > 5242880:  # 5MB in bytes
+                    file_size_mb = len(file_content) / (1024 * 1024)
+                    raise HTTPException(
+                        status_code=413,
+                        detail=f"Photo file is too large ({file_size_mb:.1f}MB). Maximum size allowed is 5MB."
+                    )
+                
+                # Generate safe filename
+                safe_extension = file_extension if file_extension in valid_photo_extensions else '.jpg'
+                filename = f"photos/{testimonial_id}{safe_extension}"
+                
+                # Upload to testimonial-photos bucket
+                try:
+                    storage_response = supabase.storage.from_('testimonial-photos').upload(
+                        path=filename,
+                        file=file_content,
+                        file_options={"content-type": photo.content_type or "image/jpeg"}
+                    )
+                    
+                    if hasattr(storage_response, 'error') and storage_response.error:
+                        raise HTTPException(
+                            status_code=500,
+                            detail=f"Failed to upload photo: {storage_response.error}"
+                        )
+                    
+                    photo_url = f"{SUPABASE_URL}/storage/v1/object/public/testimonial-photos/{filename}"
+                    
+                except Exception as storage_error:
+                    if "already exists" in str(storage_error).lower():
+                        photo_url = f"{SUPABASE_URL}/storage/v1/object/public/testimonial-photos/{filename}"
+                    else:
+                        raise HTTPException(
+                            status_code=500,
+                            detail=f"Failed to upload photo: {str(storage_error)}"
+                        )
+                        
+            except HTTPException:
+                raise
+            except Exception as file_error:
+                print(f"Photo processing error: {str(file_error)}")
+                raise HTTPException(
+                    status_code=500,
+                    detail="Failed to process photo file. Please check the file format and try again."
+                )
+
         # Insert testimonial into database
         testimonial_data = {
             "id": testimonial_id,
             "user_id": user_id,
             "name": name,
             "text": text,
+            "rating": rating,
+            "category": category,
+            "email": email,
+            "allow_sharing": allow_sharing,
             "video_url": video_url,
+            "photo_url": photo_url,
             "approved": False,
             "created_at": datetime.utcnow().isoformat()
         }

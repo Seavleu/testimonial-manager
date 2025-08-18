@@ -1,15 +1,13 @@
 'use client'
 
 import { useSearchParams } from 'next/navigation'
-import { CollectionForm } from '@/components/testimonial/collection-form'
+import { MultiStepCollectionForm } from '@/components/testimonial/multi-step-collection-form'
 import { Suspense } from 'react'
 import { AlertCircle, Heart, Star, MessageCircle } from 'lucide-react'
 
 function CollectContent() {
   const searchParams = useSearchParams()
   const userId = searchParams.get('userId')
-
-  console.log('Collect page - userId from URL:', userId)
 
   if (!userId) {
     return (
@@ -73,7 +71,7 @@ function CollectContent() {
 
       {/* Form Section */}
       <div className="container mx-auto px-4 pb-16 max-w-4xl">
-        <CollectionForm userId={userId} />
+        <MultiStepCollectionForm userId={userId} />
       </div>
     </div>
   )
