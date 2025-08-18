@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useAuth } from '@/lib/auth'
 import { Button } from '@/components/ui/button'
-import { Star, LogOut, LayoutDashboard, BarChart3, Bell } from 'lucide-react'
+import { Star, LogOut, LayoutDashboard, BarChart3, Bell, Palette, Zap } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import ErrorBoundary from '@/components/error-boundary'
 
@@ -51,6 +51,18 @@ export function Header() {
                 <Button variant="ghost" size="sm" className="flex items-center space-x-2">
                   <Star className="h-4 w-4" />
                   <span>Widget Test</span>
+                </Button>
+              </Link>
+              <Link href="/dashboard/widget-customizer">
+                <Button variant="ghost" size="sm" className="flex items-center space-x-2">
+                  <Palette className="h-4 w-4" />
+                  <span>Customizer</span>
+                </Button>
+              </Link>
+              <Link href="/dashboard/automation">
+                <Button variant="ghost" size="sm" className="flex items-center space-x-2">
+                  <Zap className="h-4 w-4" />
+                  <span>Automation</span>
                 </Button>
               </Link>
               {user?.id ? (

@@ -17,7 +17,18 @@
     refreshInterval: 30000, // 30 seconds
     showDates: true,
     showRatings: false,
-    animation: 'fade'
+    animation: 'fade',
+    // Advanced features
+    autoRotate: false,
+    rotationSpeed: 5000,
+    showArrows: true,
+    showDots: true,
+    pauseOnHover: true,
+    showPhotos: true,
+    showSocialSharing: false,
+    showCallToAction: false,
+    callToActionText: 'Leave a Review',
+    callToActionUrl: '#'
   };
 
   // CSS Styles for the widget
@@ -120,6 +131,187 @@
     
     .testimonial-list-item:hover {
       border-color: #3b82f6;
+    }
+    
+    /* Carousel Layout */
+    .testimonial-carousel {
+      position: relative;
+      overflow: hidden;
+      padding: 1rem 0;
+    }
+    
+    .testimonial-carousel-container {
+      display: flex;
+      transition: transform 0.5s ease-in-out;
+    }
+    
+    .testimonial-carousel-item {
+      flex: 0 0 100%;
+      padding: 0 0.5rem;
+    }
+    
+    .testimonial-carousel-item.active {
+      opacity: 1;
+    }
+    
+    .testimonial-carousel-item:not(.active) {
+      opacity: 0;
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+    }
+    
+    /* Carousel Navigation */
+    .testimonial-carousel-arrows {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 100%;
+      pointer-events: none;
+      z-index: 10;
+    }
+    
+    .testimonial-carousel-arrow {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 40px;
+      height: 40px;
+      background: rgba(255, 255, 255, 0.9);
+      border: 1px solid #e5e7eb;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      pointer-events: all;
+      transition: all 0.2s ease;
+      font-size: 18px;
+      color: #374151;
+    }
+    
+    .testimonial-carousel-arrow:hover {
+      background: #ffffff;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+    
+    .testimonial-carousel-arrow.prev {
+      left: 10px;
+    }
+    
+    .testimonial-carousel-arrow.next {
+      right: 10px;
+    }
+    
+    .theme-dark .testimonial-carousel-arrow {
+      background: rgba(55, 65, 81, 0.9);
+      border-color: #4b5563;
+      color: #f9fafb;
+    }
+    
+    .theme-dark .testimonial-carousel-arrow:hover {
+      background: #374151;
+    }
+    
+    /* Carousel Dots */
+    .testimonial-carousel-dots {
+      display: flex;
+      justify-content: center;
+      gap: 0.5rem;
+      margin-top: 1rem;
+    }
+    
+    .testimonial-carousel-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #d1d5db;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    
+    .testimonial-carousel-dot.active {
+      background: #3b82f6;
+      transform: scale(1.2);
+    }
+    
+    .theme-dark .testimonial-carousel-dot {
+      background: #4b5563;
+    }
+    
+    .theme-dark .testimonial-carousel-dot.active {
+      background: #60a5fa;
+    }
+    
+    /* Social Sharing */
+    .testimonial-social-sharing {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 1rem;
+    }
+    
+    .testimonial-social-button {
+      padding: 0.5rem;
+      border: 1px solid #e5e7eb;
+      border-radius: 0.375rem;
+      background: #ffffff;
+      color: #374151;
+      text-decoration: none;
+      font-size: 0.875rem;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+    }
+    
+    .testimonial-social-button:hover {
+      background: #f9fafb;
+      border-color: #3b82f6;
+      color: #3b82f6;
+    }
+    
+    .theme-dark .testimonial-social-button {
+      background: #374151;
+      border-color: #4b5563;
+      color: #f9fafb;
+    }
+    
+    .theme-dark .testimonial-social-button:hover {
+      background: #4b5563;
+      border-color: #60a5fa;
+      color: #60a5fa;
+    }
+    
+    /* Call to Action */
+    .testimonial-cta {
+      text-align: center;
+      margin-top: 1.5rem;
+      padding: 1rem;
+      background: #f8fafc;
+      border-radius: 0.5rem;
+      border: 1px solid #e2e8f0;
+    }
+    
+    .theme-dark .testimonial-cta {
+      background: #1f2937;
+      border-color: #374151;
+    }
+    
+    .testimonial-cta-button {
+      display: inline-block;
+      padding: 0.75rem 1.5rem;
+      background: #3b82f6;
+      color: #ffffff;
+      text-decoration: none;
+      border-radius: 0.375rem;
+      font-weight: 500;
+      transition: all 0.2s ease;
+    }
+    
+    .testimonial-cta-button:hover {
+      background: #2563eb;
+      transform: translateY(-1px);
     }
     
     /* Content Styles */
@@ -255,6 +447,9 @@
       this.testimonials = [];
       this.isLoading = false;
       this.refreshTimer = null;
+      this.currentSlide = 0;
+      this.rotationTimer = null;
+      this.isPaused = false;
       
       this.init();
     }
@@ -337,14 +532,24 @@
         return;
       }
 
-      const html = this.config.layout === 'cards' 
-        ? this.renderCards() 
-        : this.renderList();
+      let html = '';
+      if (this.config.layout === 'cards') {
+        html = this.renderCards();
+      } else if (this.config.layout === 'list') {
+        html = this.renderList();
+      } else if (this.config.layout === 'carousel') {
+        html = this.renderCarousel();
+      }
 
       this.container.innerHTML = html;
       
       if (this.config.animation === 'fade') {
         this.container.classList.add('testimonial-widget-fade-in');
+      }
+
+      // Initialize carousel if needed
+      if (this.config.layout === 'carousel') {
+        this.initCarousel();
       }
     }
 
@@ -381,11 +586,90 @@
               </h4>
               ${this.config.showDates ? `<span class="testimonial-date">${this.formatDate(testimonial.created_at)}</span>` : ''}
             </div>
+            ${this.config.showSocialSharing ? this.renderSocialSharing(testimonial) : ''}
           </div>
         </div>
       `).join('');
 
       return `<div class="testimonial-list">${items}</div>`;
+    }
+
+    renderCarousel() {
+      const items = this.testimonials.map((testimonial, index) => `
+        <div class="testimonial-carousel-item ${index === 0 ? 'active' : ''}" data-slide="${index}">
+          <div class="testimonial-card">
+            <div class="testimonial-content">
+              <p class="testimonial-text">${this.escapeHtml(testimonial.text)}</p>
+              ${this.config.showVideos && testimonial.video_url ? this.renderVideo(testimonial.video_url) : ''}
+              <div class="testimonial-author">
+                <h4 class="testimonial-name">
+                  ${this.escapeHtml(testimonial.name)}
+                  ${testimonial.video_url ? '<span class="testimonial-video-icon"></span>' : ''}
+                </h4>
+                ${this.config.showDates ? `<span class="testimonial-date">${this.formatDate(testimonial.created_at)}</span>` : ''}
+              </div>
+              ${this.config.showSocialSharing ? this.renderSocialSharing(testimonial) : ''}
+            </div>
+          </div>
+        </div>
+      `).join('');
+
+      const arrows = this.config.showArrows ? `
+        <div class="testimonial-carousel-arrows">
+          <button class="testimonial-carousel-arrow prev" onclick="this.closest('.testimonial-widget').TestimonialFlowWidget.prevSlide()">‹</button>
+          <button class="testimonial-carousel-arrow next" onclick="this.closest('.testimonial-widget').TestimonialFlowWidget.nextSlide()">›</button>
+        </div>
+      ` : '';
+
+      const dots = this.config.showDots && this.testimonials.length > 1 ? `
+        <div class="testimonial-carousel-dots">
+          ${this.testimonials.map((_, index) => `
+            <div class="testimonial-carousel-dot ${index === 0 ? 'active' : ''}" 
+                 onclick="this.closest('.testimonial-widget').TestimonialFlowWidget.goToSlide(${index})"></div>
+          `).join('')}
+        </div>
+      ` : '';
+
+      const cta = this.config.showCallToAction ? `
+        <div class="testimonial-cta">
+          <a href="${this.config.callToActionUrl}" class="testimonial-cta-button" target="_blank">
+            ${this.escapeHtml(this.config.callToActionText)}
+          </a>
+        </div>
+      ` : '';
+
+      return `
+        <div class="testimonial-carousel">
+          <div class="testimonial-carousel-container">
+            ${items}
+          </div>
+          ${arrows}
+          ${dots}
+          ${cta}
+        </div>
+      `;
+    }
+
+    renderSocialSharing(testimonial) {
+      const text = encodeURIComponent(`"${testimonial.text}" - ${testimonial.name}`);
+      const url = encodeURIComponent(window.location.href);
+      
+      return `
+        <div class="testimonial-social-sharing">
+          <a href="https://twitter.com/intent/tweet?text=${text}&url=${url}" 
+             class="testimonial-social-button" target="_blank">
+            🐦 Tweet
+          </a>
+          <a href="https://www.facebook.com/sharer/sharer.php?u=${url}" 
+             class="testimonial-social-button" target="_blank">
+            📘 Share
+          </a>
+          <a href="https://www.linkedin.com/sharing/share-offsite/?url=${url}" 
+             class="testimonial-social-button" target="_blank">
+            💼 LinkedIn
+          </a>
+        </div>
+      `;
     }
 
     renderVideo(videoUrl) {
@@ -436,11 +720,87 @@
 
     destroy() {
       this.stopAutoRefresh();
+      this.stopAutoRotation();
       if (this.container) {
         this.container.innerHTML = '';
         this.container.className = '';
         delete this.container.TestimonialFlowWidget;
       }
+    }
+
+    // Carousel Methods
+    initCarousel() {
+      this.currentSlide = 0;
+      this.updateCarousel();
+      
+      if (this.config.autoRotate) {
+        this.startAutoRotation();
+      }
+
+      if (this.config.pauseOnHover) {
+        this.container.addEventListener('mouseenter', () => this.pauseRotation());
+        this.container.addEventListener('mouseleave', () => this.resumeRotation());
+      }
+    }
+
+    updateCarousel() {
+      const items = this.container.querySelectorAll('.testimonial-carousel-item');
+      const dots = this.container.querySelectorAll('.testimonial-carousel-dot');
+      
+      items.forEach((item, index) => {
+        if (index === this.currentSlide) {
+          item.classList.add('active');
+        } else {
+          item.classList.remove('active');
+        }
+      });
+
+      dots.forEach((dot, index) => {
+        if (index === this.currentSlide) {
+          dot.classList.add('active');
+        } else {
+          dot.classList.remove('active');
+        }
+      });
+    }
+
+    nextSlide() {
+      this.currentSlide = (this.currentSlide + 1) % this.testimonials.length;
+      this.updateCarousel();
+    }
+
+    prevSlide() {
+      this.currentSlide = this.currentSlide === 0 ? this.testimonials.length - 1 : this.currentSlide - 1;
+      this.updateCarousel();
+    }
+
+    goToSlide(index) {
+      this.currentSlide = index;
+      this.updateCarousel();
+    }
+
+    startAutoRotation() {
+      this.stopAutoRotation();
+      this.rotationTimer = setInterval(() => {
+        if (!this.isPaused) {
+          this.nextSlide();
+        }
+      }, this.config.rotationSpeed);
+    }
+
+    stopAutoRotation() {
+      if (this.rotationTimer) {
+        clearInterval(this.rotationTimer);
+        this.rotationTimer = null;
+      }
+    }
+
+    pauseRotation() {
+      this.isPaused = true;
+    }
+
+    resumeRotation() {
+      this.isPaused = false;
     }
 
     updateConfig(newConfig) {
@@ -452,6 +812,14 @@
         this.startAutoRefresh();
       } else {
         this.stopAutoRefresh();
+      }
+
+      if (this.config.layout === 'carousel') {
+        if (this.config.autoRotate) {
+          this.startAutoRotation();
+        } else {
+          this.stopAutoRotation();
+        }
       }
     }
   }
@@ -469,7 +837,19 @@
           limit: parseInt(element.dataset.limit) || 4,
           showVideos: element.dataset.showVideos !== 'false',
           autoRefresh: element.dataset.autoRefresh === 'true',
-          showDates: element.dataset.showDates !== 'false'
+          showDates: element.dataset.showDates !== 'false',
+          showRatings: element.dataset.showRatings !== 'false',
+          // Advanced features
+          autoRotate: element.dataset.autoRotate === 'true',
+          rotationSpeed: parseInt(element.dataset.rotationSpeed) || 5000,
+          showArrows: element.dataset.showArrows !== 'false',
+          showDots: element.dataset.showDots !== 'false',
+          pauseOnHover: element.dataset.pauseOnHover !== 'false',
+          showPhotos: element.dataset.showPhotos !== 'false',
+          showSocialSharing: element.dataset.showSocialSharing === 'true',
+          showCallToAction: element.dataset.showCallToAction === 'true',
+          callToActionText: element.dataset.callToActionText || 'Leave a Review',
+          callToActionUrl: element.dataset.callToActionUrl || '#'
         };
 
         new TestimonialWidget(config);

@@ -93,6 +93,7 @@ def migrate_enhanced_testimonials():
             # This is just a placeholder - you'll need to create it manually
             print("ℹ️  Please create 'testimonial-photos' storage bucket in Supabase dashboard")
             print("ℹ️  Set public access policy for the bucket")
+            print("ℹ️  Configure 5MB file size limit for the bucket")
         except Exception as e:
             print(f"⚠️  Storage bucket creation note: {str(e)}")
         
@@ -107,7 +108,8 @@ def migrate_enhanced_testimonials():
         print("\n⚠️  Manual steps required:")
         print("  1. Create 'testimonial-photos' storage bucket in Supabase dashboard")
         print("  2. Set public access policy for the bucket")
-        print("  3. Configure CORS if needed")
+        print("  3. Configure 5MB file size limit for the bucket")
+        print("  4. Configure CORS if needed")
         
     except Exception as e:
         print(f"❌ Migration failed: {str(e)}")

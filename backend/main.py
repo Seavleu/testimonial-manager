@@ -485,6 +485,50 @@ async def approve_testimonial(testimonial_id: str):
             detail="An unexpected error occurred while approving the testimonial"
         )
 
+@app.put("/testimonials/{testimonial_id}/reject")
+async def reject_testimonial(testimonial_id: str):
+    """
+    Reject a testimonial
+    
+    Args:
+        testimonial_id: The UUID of the testimonial to reject
+    
+    Returns:
+        Success message
+    """
+    try:
+        supabase = get_supabase_client()
+        
+        response = supabase.table('testimonials').update(
+            {"approved": False}
+        ).eq('id', testimonial_id).execute()
+        
+        if hasattr(response, 'status_code') and response.status_code >= 400:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to reject testimonial: {response.status_code}"
+            )
+        
+        if not response.data:
+            raise HTTPException(
+                status_code=404,
+                detail="Testimonial not found"
+            )
+        
+        return {
+            "success": True,
+            "message": "Testimonial rejected successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Unexpected error in reject_testimonial: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail="An unexpected error occurred while rejecting the testimonial"
+        )
+
 @app.delete("/testimonials/{testimonial_id}")
 async def delete_testimonial(testimonial_id: str):
     """
@@ -545,6 +589,435 @@ async def delete_testimonial(testimonial_id: str):
         raise HTTPException(
             status_code=500,
             detail="An unexpected error occurred while deleting the testimonial"
+        )
+
+# Automation Rules Endpoints
+
+@app.get("/automation/rules/{user_id}")
+async def get_automation_rules(user_id: str):
+    """
+    Get all automation rules for a user
+    
+    Args:
+        user_id: The UUID of the user
+    
+    Returns:
+        List of automation rules
+    """
+    try:
+        supabase = get_supabase_client()
+        
+        response = supabase.table('automation_rules').select('*').eq('user_id', user_id).order('priority', desc=True).execute()
+        
+        if hasattr(response, 'status_code') and response.status_code >= 400:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to fetch automation rules: {response.status_code}"
+            )
+        
+        return {
+            "success": True,
+            "rules": response.data or []
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Unexpected error in get_automation_rules: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail="An unexpected error occurred while fetching automation rules"
+        )
+
+@app.post("/automation/rules")
+async def create_automation_rule(
+    user_id: str,
+    name: str,
+    description: str,
+    type: str,
+    conditions: list,
+    actions: list,
+    priority: int = 1,
+    enabled: bool = True
+):
+    """
+    Create a new automation rule
+    
+    Args:
+        user_id: The UUID of the user
+        name: Rule name
+        description: Rule description
+        type: Rule type (auto_approval, spam_detection, categorization)
+        conditions: List of rule conditions
+        actions: List of rule actions
+        priority: Rule priority (1-10)
+        enabled: Whether the rule is enabled
+    
+    Returns:
+        Created rule
+    """
+    try:
+        supabase = get_supabase_client()
+        
+        rule_data = {
+            "id": str(uuid.uuid4()),
+            "user_id": user_id,
+            "name": name,
+            "description": description,
+            "type": type,
+            "conditions": conditions,
+            "actions": actions,
+            "priority": priority,
+            "enabled": enabled,
+            "created_at": datetime.utcnow().isoformat(),
+            "updated_at": datetime.utcnow().isoformat()
+        }
+        
+        response = supabase.table('automation_rules').insert(rule_data).execute()
+        
+        if hasattr(response, 'status_code') and response.status_code >= 400:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to create automation rule: {response.status_code}"
+            )
+        
+        return {
+            "success": True,
+            "rule": response.data[0] if response.data else rule_data
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Unexpected error in create_automation_rule: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail="An unexpected error occurred while creating the automation rule"
+        )
+
+@app.put("/automation/rules/{rule_id}")
+async def update_automation_rule(
+    rule_id: str,
+    name: str,
+    description: str,
+    type: str,
+    conditions: list,
+    actions: list,
+    priority: int,
+    enabled: bool
+):
+    """
+    Update an automation rule
+    
+    Args:
+        rule_id: The UUID of the rule to update
+        name: Rule name
+        description: Rule description
+        type: Rule type
+        conditions: List of rule conditions
+        actions: List of rule actions
+        priority: Rule priority
+        enabled: Whether the rule is enabled
+    
+    Returns:
+        Updated rule
+    """
+    try:
+        supabase = get_supabase_client()
+        
+        update_data = {
+            "name": name,
+            "description": description,
+            "type": type,
+            "conditions": conditions,
+            "actions": actions,
+            "priority": priority,
+            "enabled": enabled,
+            "updated_at": datetime.utcnow().isoformat()
+        }
+        
+        response = supabase.table('automation_rules').update(update_data).eq('id', rule_id).execute()
+        
+        if hasattr(response, 'status_code') and response.status_code >= 400:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to update automation rule: {response.status_code}"
+            )
+        
+        if not response.data:
+            raise HTTPException(
+                status_code=404,
+                detail="Automation rule not found"
+            )
+        
+        return {
+            "success": True,
+            "rule": response.data[0]
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Unexpected error in update_automation_rule: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail="An unexpected error occurred while updating the automation rule"
+        )
+
+@app.put("/automation/rules/{rule_id}/toggle")
+async def toggle_automation_rule(rule_id: str, enabled: bool):
+    """
+    Toggle automation rule enabled status
+    
+    Args:
+        rule_id: The UUID of the rule to toggle
+        enabled: Whether to enable or disable the rule
+    
+    Returns:
+        Success message
+    """
+    try:
+        supabase = get_supabase_client()
+        
+        response = supabase.table('automation_rules').update({
+            "enabled": enabled,
+            "updated_at": datetime.utcnow().isoformat()
+        }).eq('id', rule_id).execute()
+        
+        if hasattr(response, 'status_code') and response.status_code >= 400:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to toggle automation rule: {response.status_code}"
+            )
+        
+        if not response.data:
+            raise HTTPException(
+                status_code=404,
+                detail="Automation rule not found"
+            )
+        
+        return {
+            "success": True,
+            "message": f"Rule {'enabled' if enabled else 'disabled'} successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Unexpected error in toggle_automation_rule: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail="An unexpected error occurred while toggling the automation rule"
+        )
+
+@app.delete("/automation/rules/{rule_id}")
+async def delete_automation_rule(rule_id: str):
+    """
+    Delete an automation rule
+    
+    Args:
+        rule_id: The UUID of the rule to delete
+    
+    Returns:
+        Success message
+    """
+    try:
+        supabase = get_supabase_client()
+        
+        response = supabase.table('automation_rules').delete().eq('id', rule_id).execute()
+        
+        if hasattr(response, 'status_code') and response.status_code >= 400:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to delete automation rule: {response.status_code}"
+            )
+        
+        return {
+            "success": True,
+            "message": "Automation rule deleted successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Unexpected error in delete_automation_rule: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail="An unexpected error occurred while deleting the automation rule"
+        )
+
+@app.post("/automation/rules/{rule_id}/test")
+async def test_automation_rule(rule_id: str, testimonial_data: dict):
+    """
+    Test an automation rule against sample testimonial data
+    
+    Args:
+        rule_id: The UUID of the rule to test
+        testimonial_data: Sample testimonial data to test against
+    
+    Returns:
+        Test results
+    """
+    try:
+        supabase = get_supabase_client()
+        
+        # Get the rule
+        rule_response = supabase.table('automation_rules').select('*').eq('id', rule_id).execute()
+        
+        if not rule_response.data:
+            raise HTTPException(
+                status_code=404,
+                detail="Automation rule not found"
+            )
+        
+        rule = rule_response.data[0]
+        
+        # Test the rule conditions
+        conditions_met = evaluate_rule_conditions(rule['conditions'], testimonial_data)
+        
+        # Determine actions to take
+        actions_to_execute = rule['actions'] if conditions_met else []
+        
+        return {
+            "success": True,
+            "rule_matched": conditions_met,
+            "conditions_evaluated": rule['conditions'],
+            "actions_to_execute": actions_to_execute,
+            "testimonial_data": testimonial_data
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Unexpected error in test_automation_rule: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail="An unexpected error occurred while testing the automation rule"
+        )
+
+def evaluate_rule_conditions(conditions: list, testimonial_data: dict) -> bool:
+    """
+    Evaluate rule conditions against testimonial data
+    
+    Args:
+        conditions: List of rule conditions
+        testimonial_data: Testimonial data to evaluate against
+    
+    Returns:
+        True if all conditions are met, False otherwise
+    """
+    if not conditions:
+        return True
+    
+    result = True
+    logical_operator = 'AND'
+    
+    for i, condition in enumerate(conditions):
+        if i > 0 and 'logical_operator' in condition:
+            logical_operator = condition['logical_operator']
+        
+        condition_result = evaluate_single_condition(condition, testimonial_data)
+        
+        if logical_operator == 'AND':
+            result = result and condition_result
+        else:  # OR
+            result = result or condition_result
+    
+    return result
+
+def evaluate_single_condition(condition: dict, testimonial_data: dict) -> bool:
+    """
+    Evaluate a single condition against testimonial data
+    
+    Args:
+        condition: Single rule condition
+        testimonial_data: Testimonial data to evaluate against
+    
+    Returns:
+        True if condition is met, False otherwise
+    """
+    field = condition.get('field', '')
+    operator = condition.get('operator', 'equals')
+    value = condition.get('value', '')
+    
+    # Get the actual value from testimonial data
+    actual_value = testimonial_data.get(field, '')
+    
+    # Handle special fields
+    if field == 'text_length':
+        actual_value = len(testimonial_data.get('text', ''))
+        value = int(value) if value.isdigit() else 0
+    
+    # Convert to strings for comparison
+    actual_value_str = str(actual_value).lower()
+    value_str = str(value).lower()
+    
+    try:
+        if operator == 'equals':
+            return actual_value_str == value_str
+        elif operator == 'contains':
+            return value_str in actual_value_str
+        elif operator == 'starts_with':
+            return actual_value_str.startswith(value_str)
+        elif operator == 'ends_with':
+            return actual_value_str.endswith(value_str)
+        elif operator == 'greater_than':
+            return float(actual_value) > float(value)
+        elif operator == 'less_than':
+            return float(actual_value) < float(value)
+        elif operator == 'regex':
+            import re
+            return bool(re.search(value, actual_value_str))
+        else:
+            return False
+    except (ValueError, TypeError):
+        return False
+
+@app.get("/automation/stats/{user_id}")
+async def get_automation_stats(user_id: str):
+    """
+    Get automation statistics for a user
+    
+    Args:
+        user_id: The UUID of the user
+    
+    Returns:
+        Automation statistics
+    """
+    try:
+        supabase = get_supabase_client()
+        
+        # Get total rules
+        rules_response = supabase.table('automation_rules').select('id, enabled').eq('user_id', user_id).execute()
+        total_rules = len(rules_response.data or [])
+        active_rules = len([r for r in (rules_response.data or []) if r.get('enabled', False)])
+        
+        # Get rules executed count from logs
+        logs_response = supabase.table('automation_logs').select('id').eq('user_id', user_id).execute()
+        rules_executed = len(logs_response.data or [])
+        
+        # Calculate automation rate (percentage of testimonials processed by automation)
+        testimonials_response = supabase.table('testimonials').select('id').eq('user_id', user_id).execute()
+        total_testimonials = len(testimonials_response.data or [])
+        
+        automation_rate = 0
+        if total_testimonials > 0:
+            automation_rate = round((rules_executed / total_testimonials) * 100, 1)
+        
+        return {
+            "totalRules": total_rules,
+            "activeRules": active_rules,
+            "rulesExecuted": rules_executed,
+            "automationRate": automation_rate
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Unexpected error in get_automation_stats: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail="An unexpected error occurred while fetching automation statistics"
         )
 
 @app.get("/personal-message/{user_id}")

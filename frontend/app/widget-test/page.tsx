@@ -435,6 +435,7 @@ export default function WidgetTestPage() {
                   <SelectContent>
                     <SelectItem value="cards">Cards Grid</SelectItem>
                     <SelectItem value="list">Vertical List</SelectItem>
+                    <SelectItem value="carousel">Carousel</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

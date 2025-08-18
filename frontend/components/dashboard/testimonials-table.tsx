@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
 import { PersonalMessageManager } from '@/components/dashboard/personal-message-manager';
 import { 
@@ -25,7 +27,14 @@ import {
   User,
   Star,
   Clock,
-  AlertCircle
+  AlertCircle,
+  Download,
+  CheckSquare,
+  Square,
+  Settings,
+  FileText,
+  FileSpreadsheet,
+  FileJson
 } from 'lucide-react';
 
 interface Testimonial {
@@ -35,6 +44,10 @@ interface Testimonial {
   video_url: string | null;
   approved: boolean;
   created_at: string;
+  rating?: number;
+  category?: string;
+  email?: string;
+  photo_url?: string | null;
 }
 
 interface TestimonialsTableProps {
@@ -51,6 +64,14 @@ export function TestimonialsTable({ userId }: TestimonialsTableProps) {
   const [sortBy, setSortBy] = useState<'date' | 'name' | 'status'>('date');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  
+  // Bulk operations state
+  const [selectedTestimonials, setSelectedTestimonials] = useState<Set<string>>(new Set());
+  const [selectAll, setSelectAll] = useState(false);
+  const [bulkActionInProgress, setBulkActionInProgress] = useState(false);
+  const [bulkActionProgress, setBulkActionProgress] = useState(0);
+  const [currentBulkAction, setCurrentBulkAction] = useState<string>('');
+  
   const { toast } = useToast();
 
   useEffect(() => {
@@ -104,6 +125,13 @@ export function TestimonialsTable({ userId }: TestimonialsTableProps) {
     setFilteredTestimonials(filtered);
   }, [testimonials, searchTerm, filter, sortBy, sortOrder]);
 
+  // Update select all when filtered testimonials change
+  useEffect(() => {
+    const allSelected = filteredTestimonials.length > 0 && 
+      filteredTestimonials.every(t => selectedTestimonials.has(t.id));
+    setSelectAll(allSelected);
+  }, [filteredTestimonials, selectedTestimonials]);
+
   const fetchTestimonials = async () => {
     try {
       setLoading(true);
@@ -148,6 +176,269 @@ export function TestimonialsTable({ userId }: TestimonialsTableProps) {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Bulk operations functions
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      const allIds = new Set(filteredTestimonials.map(t => t.id));
+      setSelectedTestimonials(allIds);
+    } else {
+      setSelectedTestimonials(new Set());
+    }
+  };
+
+  const handleSelectTestimonial = (id: string, checked: boolean) => {
+    const newSelected = new Set(selectedTestimonials);
+    if (checked) {
+      newSelected.add(id);
+    } else {
+      newSelected.delete(id);
+    }
+    setSelectedTestimonials(newSelected);
+  };
+
+  const handleBulkApprove = async () => {
+    if (selectedTestimonials.size === 0) return;
+    
+    if (!confirm(`Are you sure you want to approve ${selectedTestimonials.size} testimonial(s)?`)) return;
+
+    setBulkActionInProgress(true);
+    setCurrentBulkAction('Approving testimonials...');
+    setBulkActionProgress(0);
+
+    try {
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+      const selectedArray = Array.from(selectedTestimonials);
+      
+      for (let i = 0; i < selectedArray.length; i++) {
+        const id = selectedArray[i];
+        const response = await fetch(
+          `${backendUrl}/testimonials/${id}/approve`,
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+          }
+        );
+
+        if (!response.ok) {
+          throw new Error(`Failed to approve testimonial ${id}`);
+        }
+
+        setBulkActionProgress(((i + 1) / selectedArray.length) * 100);
+      }
+
+      // Update local state
+      setTestimonials(prev =>
+        prev.map(t => 
+          selectedTestimonials.has(t.id) ? { ...t, approved: true } : t
+        )
+      );
+
+      setSelectedTestimonials(new Set());
+      
+      toast({
+        title: 'Success',
+        description: `Successfully approved ${selectedArray.length} testimonial(s)`,
+      });
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: `Failed to approve testimonials: ${error.message}`,
+        variant: 'destructive',
+      });
+    } finally {
+      setBulkActionInProgress(false);
+      setCurrentBulkAction('');
+      setBulkActionProgress(0);
+    }
+  };
+
+  const handleBulkReject = async () => {
+    if (selectedTestimonials.size === 0) return;
+    
+    if (!confirm(`Are you sure you want to reject ${selectedTestimonials.size} testimonial(s)?`)) return;
+
+    setBulkActionInProgress(true);
+    setCurrentBulkAction('Rejecting testimonials...');
+    setBulkActionProgress(0);
+
+    try {
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+      const selectedArray = Array.from(selectedTestimonials);
+      
+      for (let i = 0; i < selectedArray.length; i++) {
+        const id = selectedArray[i];
+        const response = await fetch(
+          `${backendUrl}/testimonials/${id}/reject`,
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+          }
+        );
+
+        if (!response.ok) {
+          throw new Error(`Failed to reject testimonial ${id}`);
+        }
+
+        setBulkActionProgress(((i + 1) / selectedArray.length) * 100);
+      }
+
+      // Update local state
+      setTestimonials(prev =>
+        prev.map(t => 
+          selectedTestimonials.has(t.id) ? { ...t, approved: false } : t
+        )
+      );
+
+      setSelectedTestimonials(new Set());
+      
+      toast({
+        title: 'Success',
+        description: `Successfully rejected ${selectedArray.length} testimonial(s)`,
+      });
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: `Failed to reject testimonials: ${error.message}`,
+        variant: 'destructive',
+      });
+    } finally {
+      setBulkActionInProgress(false);
+      setCurrentBulkAction('');
+      setBulkActionProgress(0);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedTestimonials.size === 0) return;
+    
+    if (!confirm(`Are you sure you want to delete ${selectedTestimonials.size} testimonial(s)? This action cannot be undone.`)) return;
+
+    setBulkActionInProgress(true);
+    setCurrentBulkAction('Deleting testimonials...');
+    setBulkActionProgress(0);
+
+    try {
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+      const selectedArray = Array.from(selectedTestimonials);
+      
+      for (let i = 0; i < selectedArray.length; i++) {
+        const id = selectedArray[i];
+        const response = await fetch(
+          `${backendUrl}/testimonials/${id}`,
+          {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+          }
+        );
+
+        if (!response.ok) {
+          throw new Error(`Failed to delete testimonial ${id}`);
+        }
+
+        setBulkActionProgress(((i + 1) / selectedArray.length) * 100);
+      }
+
+      // Update local state
+      setTestimonials(prev => prev.filter(t => !selectedTestimonials.has(t.id)));
+      setSelectedTestimonials(new Set());
+      
+      toast({
+        title: 'Success',
+        description: `Successfully deleted ${selectedArray.length} testimonial(s)`,
+      });
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: `Failed to delete testimonials: ${error.message}`,
+        variant: 'destructive',
+      });
+    } finally {
+      setBulkActionInProgress(false);
+      setCurrentBulkAction('');
+      setBulkActionProgress(0);
+    }
+  };
+
+  const handleBulkExport = async (format: 'csv' | 'json' | 'excel') => {
+    if (selectedTestimonials.size === 0) return;
+
+    setBulkActionInProgress(true);
+    setCurrentBulkAction(`Exporting to ${format.toUpperCase()}...`);
+    setBulkActionProgress(0);
+
+    try {
+      const selectedTestimonialsData = testimonials.filter(t => selectedTestimonials.has(t.id));
+      
+      let content = '';
+      let filename = `testimonials-${format}-${new Date().toISOString().split('T')[0]}`;
+      let mimeType = '';
+
+      switch (format) {
+        case 'csv':
+          content = generateCSV(selectedTestimonialsData);
+          filename += '.csv';
+          mimeType = 'text/csv';
+          break;
+        case 'json':
+          content = JSON.stringify(selectedTestimonialsData, null, 2);
+          filename += '.json';
+          mimeType = 'application/json';
+          break;
+        case 'excel':
+          content = generateCSV(selectedTestimonialsData); // For now, using CSV format
+          filename += '.csv';
+          mimeType = 'text/csv';
+          break;
+      }
+
+      // Create and download file
+      const blob = new Blob([content], { type: mimeType });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      setBulkActionProgress(100);
+      
+      toast({
+        title: 'Export Successful',
+        description: `Exported ${selectedTestimonialsData.length} testimonials to ${format.toUpperCase()}`,
+      });
+    } catch (error: any) {
+      toast({
+        title: 'Export Failed',
+        description: `Failed to export testimonials: ${error.message}`,
+        variant: 'destructive',
+      });
+    } finally {
+      setBulkActionInProgress(false);
+      setCurrentBulkAction('');
+      setBulkActionProgress(0);
+    }
+  };
+
+  const generateCSV = (testimonials: Testimonial[]): string => {
+    const headers = ['ID', 'Name', 'Text', 'Rating', 'Category', 'Email', 'Approved', 'Created At', 'Video URL', 'Photo URL'];
+    const rows = testimonials.map(t => [
+      t.id,
+      `"${t.name.replace(/"/g, '""')}"`,
+      `"${t.text.replace(/"/g, '""')}"`,
+      t.rating || '',
+      t.category || '',
+      t.email || '',
+      t.approved ? 'Yes' : 'No',
+      t.created_at,
+      t.video_url || '',
+      t.photo_url || ''
+    ]);
+    
+    return [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
   };
   
   const handleApprove = async (id: string) => {
@@ -384,6 +675,85 @@ export function TestimonialsTable({ userId }: TestimonialsTableProps) {
           </div>
         </div>
 
+        {/* Bulk Actions Bar */}
+        {selectedTestimonials.size > 0 && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Badge variant="secondary" className="bg-blue-100 text-blue-800">
+                  {selectedTestimonials.size} selected
+                </Badge>
+                <span className="text-sm text-blue-700">
+                  {currentBulkAction || 'Select an action to perform'}
+                </span>
+              </div>
+              
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  onClick={handleBulkApprove}
+                  disabled={bulkActionInProgress}
+                  className="bg-green-600 hover:bg-green-700 text-white"
+                >
+                  <CheckCircle className="h-4 w-4 mr-1" />
+                  Approve All
+                </Button>
+                
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleBulkReject}
+                  disabled={bulkActionInProgress}
+                  className="border-orange-200 text-orange-700 hover:bg-orange-50"
+                >
+                  <X className="h-4 w-4 mr-1" />
+                  Reject All
+                </Button>
+                
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleBulkExport('csv')}
+                  disabled={bulkActionInProgress}
+                  className="border-blue-200 text-blue-700 hover:bg-blue-50"
+                >
+                  <FileText className="h-4 w-4 mr-1" />
+                  Export CSV
+                </Button>
+                
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleBulkExport('json')}
+                  disabled={bulkActionInProgress}
+                  className="border-purple-200 text-purple-700 hover:bg-purple-50"
+                >
+                  <FileJson className="h-4 w-4 mr-1" />
+                  Export JSON
+                </Button>
+                
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleBulkDelete}
+                  disabled={bulkActionInProgress}
+                  className="border-red-200 text-red-700 hover:bg-red-50"
+                >
+                  <Trash2 className="h-4 w-4 mr-1" />
+                  Delete All
+                </Button>
+              </div>
+            </div>
+            
+            {bulkActionInProgress && (
+              <div className="mt-3">
+                <Progress value={bulkActionProgress} className="h-2" />
+                <p className="text-xs text-blue-600 mt-1">{Math.round(bulkActionProgress)}% complete</p>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Filters and Search */}
         <div className="flex flex-col lg:flex-row gap-4">
           <div className="relative flex-1">
@@ -452,6 +822,11 @@ export function TestimonialsTable({ userId }: TestimonialsTableProps) {
                 <CardContent className="p-6">
                   <div className="flex items-start justify-between mb-4">
                     <div className="flex items-center">
+                      <Checkbox
+                        checked={selectedTestimonials.has(testimonial.id)}
+                        onCheckedChange={(checked) => handleSelectTestimonial(testimonial.id, checked as boolean)}
+                        className="mr-3"
+                      />
                       <div className="h-10 w-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-semibold">
                         {testimonial.name.charAt(0).toUpperCase()}
                       </div>
@@ -508,12 +883,28 @@ export function TestimonialsTable({ userId }: TestimonialsTableProps) {
           </div>
         ) : (
           <div className="space-y-4">
+            {/* List Header with Select All */}
+            <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
+              <Checkbox
+                checked={selectAll}
+                onCheckedChange={handleSelectAll}
+                className="mr-2"
+              />
+              <span className="text-sm font-medium text-gray-700">
+                Select All ({filteredTestimonials.length})
+              </span>
+            </div>
+            
             {filteredTestimonials.map((testimonial) => (
               <Card key={testimonial.id} className="bg-white border-0 shadow-md hover:shadow-lg transition-all duration-300">
               <CardContent className="p-6">
                   <div className="flex items-start justify-between">
                   <div className="flex-1">
                       <div className="flex items-center gap-4 mb-3">
+                        <Checkbox
+                          checked={selectedTestimonials.has(testimonial.id)}
+                          onCheckedChange={(checked) => handleSelectTestimonial(testimonial.id, checked as boolean)}
+                        />
                         <div className="h-10 w-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-semibold">
                           {testimonial.name.charAt(0).toUpperCase()}
                         </div>
