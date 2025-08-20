@@ -9,11 +9,10 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
-import { Progress } from '@/components/ui/progress'
 import { useToast } from '@/hooks/use-toast'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { EnhancedTextarea } from '@/components/ui/enhanced-textarea'
-import { progressSaver } from '@/lib/progress-saver'
+import { Badge } from '@/components/ui/badge'
+import { Progress } from '@/components/ui/progress'
 import { 
   Upload, 
   CheckCircle, 
@@ -26,31 +25,25 @@ import {
   Users,
   ChevronLeft,
   ChevronRight,
-  User,
-  MessageSquare,
   Star,
   Camera,
-  Share2
+  Tag,
+  MessageSquare,
+  User,
+  Heart
 } from 'lucide-react'
 
-// Enhanced schema for multi-step form
+// Enhanced schema with new fields
 const testimonialSchema = z.object({
-  // Step 1: Basic Information
   name: z.string().min(1, 'Name is required').max(100, 'Name must be less than 100 characters'),
   email: z.string().email('Please enter a valid email address').optional().or(z.literal('')),
-  
-  // Step 2: Experience Details
-  rating: z.number().min(1, 'Please select a rating').max(5, 'Rating must be between 1 and 5'),
-  category: z.string().min(1, 'Please select a category'),
   text: z.string().min(10, 'Testimonial must be at least 10 characters').max(500, 'Testimonial must be less than 500 characters'),
-  
-  // Step 3: Media & Additional Info
-  video: z.instanceof(File).optional().nullable(),
+  rating: z.number().min(1, 'Please provide a rating').max(5, 'Rating must be between 1 and 5'),
+  category: z.string().min(1, 'Please select a category'),
+  company: z.string().max(100, 'Company name must be less than 100 characters').optional().or(z.literal('')),
   photo: z.instanceof(File).optional().nullable(),
-  allowSharing: z.boolean(),
-  
-  // Step 4: Review & Submit
-  termsAccepted: z.boolean().refine(val => val === true, 'You must accept the terms and conditions'),
+  video: z.instanceof(File).optional().nullable(),
+  allowContact: z.boolean().default(false),
 })
 
 type TestimonialForm = z.infer<typeof testimonialSchema>
@@ -60,55 +53,65 @@ interface MultiStepCollectionFormProps {
 }
 
 // File validation constants
-const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50MB in bytes
-const MAX_PHOTO_SIZE = 5 * 1024 * 1024 // 5MB for photos
+const MAX_VIDEO_SIZE = 50 * 1024 * 1024 // 50MB
+const MAX_PHOTO_SIZE = 5 * 1024 * 1024 // 5MB
 const ALLOWED_VIDEO_TYPES = ['video/mp4', 'video/webm', 'video/quicktime', 'video/x-msvideo']
 const ALLOWED_PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp']
-const ALLOWED_EXTENSIONS = ['.mp4', '.mov', '.webm', '.avi']
+const ALLOWED_VIDEO_EXTENSIONS = ['.mp4', '.mov', '.webm', '.avi']
+const ALLOWED_PHOTO_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp']
+
+// Categories for testimonials
+const TESTIMONIAL_CATEGORIES = [
+  { id: 'general', label: 'General Experience', icon: '💬' },
+  { id: 'customer-service', label: 'Customer Service', icon: '🎯' },
+  { id: 'product-quality', label: 'Product Quality', icon: '⭐' },
+  { id: 'value', label: 'Value for Money', icon: '💰' },
+  { id: 'recommendation', label: 'Recommendation', icon: '👍' },
+  { id: 'problem-solving', label: 'Problem Solving', icon: '🔧' },
+]
 
 // Form steps configuration
 const FORM_STEPS = [
   {
-    id: 1,
+    id: 'welcome',
+    title: 'Welcome',
+    description: 'Let\'s get started with your testimonial',
+    icon: Sparkles,
+  },
+  {
+    id: 'basic-info',
     title: 'Basic Information',
     description: 'Tell us about yourself',
     icon: User,
-    fields: ['name', 'email']
   },
   {
-    id: 2,
+    id: 'experience',
     title: 'Your Experience',
-    description: 'Share your experience and rating',
+    description: 'Share your story',
+    icon: MessageSquare,
+  },
+  {
+    id: 'rating',
+    title: 'Rating & Category',
+    description: 'Rate your experience',
     icon: Star,
-    fields: ['rating', 'category', 'text']
   },
   {
-    id: 3,
-    title: 'Media & Preferences',
-    description: 'Add photos, videos, and preferences',
+    id: 'media',
+    title: 'Media (Optional)',
+    description: 'Add photos or video',
     icon: Camera,
-    fields: ['video', 'photo', 'allowSharing']
   },
   {
-    id: 4,
+    id: 'review',
     title: 'Review & Submit',
-    description: 'Review your testimonial and submit',
+    description: 'Review your testimonial',
     icon: CheckCircle,
-    fields: ['termsAccepted']
-  }
-]
-
-// Category options
-const CATEGORIES = [
-  { value: 'product', label: 'Product Experience' },
-  { value: 'service', label: 'Customer Service' },
-  { value: 'support', label: 'Technical Support' },
-  { value: 'overall', label: 'Overall Experience' },
-  { value: 'recommendation', label: 'Recommendation' }
+  },
 ]
 
 export function MultiStepCollectionForm({ userId }: MultiStepCollectionFormProps) {
-  const [currentStep, setCurrentStep] = useState(1)
+  const [currentStep, setCurrentStep] = useState(0)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSuccess, setIsSuccess] = useState(false)
   const [mounted, setMounted] = useState(false)
@@ -117,7 +120,6 @@ export function MultiStepCollectionForm({ userId }: MultiStepCollectionFormProps
   const [videoError, setVideoError] = useState<string>('')
   const [photoError, setPhotoError] = useState<string>('')
   const [personalMessage, setPersonalMessage] = useState<{title: string, message: string} | null>(null)
-  const [isProgressSaved, setIsProgressSaved] = useState(false)
   const { toast } = useToast()
 
   // Handle hydration
@@ -154,283 +156,27 @@ export function MultiStepCollectionForm({ userId }: MultiStepCollectionFormProps
   const {
     register,
     handleSubmit,
-    formState: { errors, isValid },
+    formState: { errors },
     watch,
     setValue,
+    setError,
+    clearErrors,
     trigger,
-    getValues,
   } = useForm<TestimonialForm>({
     resolver: zodResolver(testimonialSchema),
-    mode: 'onChange',
     defaultValues: {
       rating: 0,
       category: '',
-      allowSharing: true,
-      termsAccepted: false,
+      allowContact: false,
     }
   })
 
-  const watchedValues = watch()
+  const formValues = watch()
 
-  // Progress saving functionality
-  useEffect(() => {
-    if (mounted && userId) {
-      // Load saved progress on mount
-      const savedProgress = progressSaver.loadProgress(userId)
-      if (savedProgress) {
-        // Restore form data
-        Object.entries(savedProgress.formData).forEach(([key, value]) => {
-          if (key === 'video' || key === 'photo') {
-            // Handle file objects separately
-            if (value && typeof value === 'object' && value.name) {
-              // For now, we'll just restore the file name info
-              // In a real implementation, you might want to store file data differently
-              console.log(`Restored ${key}: ${value.name}`)
-            }
-          } else {
-            setValue(key as any, value)
-          }
-        })
-        
-        // Restore step
-        setCurrentStep(savedProgress.step)
-        
-        toast({
-          title: 'Progress Restored',
-          description: `Resumed from step ${savedProgress.step}`,
-        })
-      }
-    }
-  }, [mounted, userId, setValue, toast])
-
-  // Auto-save progress
-  useEffect(() => {
-    if (mounted && userId) {
-      const cleanup = progressSaver.startAutoSave(
-        userId,
-        () => {
-          const formData = getValues()
-          // Convert files to serializable format
-          const serializableData = {
-            ...formData,
-            video: selectedVideo ? { name: selectedVideo.name, size: selectedVideo.size } : null,
-            photo: selectedPhoto ? { name: selectedPhoto.name, size: selectedPhoto.size } : null,
-          }
-          return serializableData
-        },
-        () => currentStep
-      )
-      
-      // Show progress saved indicator
-      setIsProgressSaved(true)
-      setTimeout(() => setIsProgressSaved(false), 2000)
-      
-      return cleanup
-    }
-  }, [mounted, userId, getValues, currentStep, selectedVideo, selectedPhoto])
-
-  // Clear progress function
-  const clearProgress = () => {
-    if (userId) {
-      progressSaver.clearProgress(userId)
-      toast({
-        title: 'Progress Cleared',
-        description: 'Your saved progress has been cleared.',
-      })
-    }
-  }
-
-  // Calculate progress percentage
-  const progressPercentage = (currentStep / FORM_STEPS.length) * 100
-
-  // Check if current step is valid
-  const isCurrentStepValid = async () => {
-    const currentStepFields = FORM_STEPS[currentStep - 1].fields
-    const result = await trigger(currentStepFields as any)
-    return result
-  }
-
-  // Navigation functions
-  const nextStep = async () => {
-    const isValid = await isCurrentStepValid()
-    if (isValid && currentStep < FORM_STEPS.length) {
-      setCurrentStep(currentStep + 1)
-    }
-  }
-
-  const prevStep = () => {
-    if (currentStep > 1) {
-      setCurrentStep(currentStep - 1)
-    }
-  }
-
-  // File validation functions
-  const validateVideo = (file: File): string | null => {
-    if (file.size > MAX_FILE_SIZE) {
-      return `File is too large (${(file.size / (1024 * 1024)).toFixed(1)}MB). Maximum size allowed is 50MB.`
-    }
-
-    if (file.type && !ALLOWED_VIDEO_TYPES.includes(file.type)) {
-      return `File type "${file.type}" is not supported. Please use MP4, MOV, WebM, or AVI format.`
-    }
-
-    const extension = '.' + file.name.split('.').pop()?.toLowerCase()
-    if (!ALLOWED_EXTENSIONS.includes(extension)) {
-      return `File extension "${extension}" is not supported. Please use MP4, MOV, WebM, or AVI format.`
-    }
-
-    return null
-  }
-
-  const validatePhoto = (file: File): string | null => {
-    if (file.size > MAX_PHOTO_SIZE) {
-      return `Photo is too large (${(file.size / (1024 * 1024)).toFixed(1)}MB). Maximum size allowed is 5MB.`
-    }
-
-    if (file.type && !ALLOWED_PHOTO_TYPES.includes(file.type)) {
-      return `Photo type "${file.type}" is not supported. Please use JPEG, PNG, or WebP format.`
-    }
-
-    return null
-  }
-
-  // File handling functions
-  const handleVideoChange = (file: File | null) => {
-    setVideoError('')
-    setSelectedVideo(file)
-    
-    if (file) {
-      const error = validateVideo(file)
-      if (error) {
-        setVideoError(error)
-        setSelectedVideo(null)
-      } else {
-        setValue('video', file)
-      }
-    } else {
-      setValue('video', null)
-    }
-  }
-
-  const handlePhotoChange = (file: File | null) => {
-    setPhotoError('')
-    setSelectedPhoto(file)
-    
-    if (file) {
-      const error = validatePhoto(file)
-      if (error) {
-        setPhotoError(error)
-        setSelectedPhoto(null)
-      } else {
-        setValue('photo', file)
-      }
-    } else {
-      setValue('photo', null)
-    }
-  }
-
-  // Rating component
-  const RatingInput = () => {
-    const [hoveredRating, setHoveredRating] = useState(0)
-    const currentRating = watchedValues.rating || 0
-
-    return (
-      <div className="space-y-4">
-        <Label className="text-sm font-medium text-gray-700">How would you rate your experience? *</Label>
-        <div className="flex items-center gap-2">
-          {[1, 2, 3, 4, 5].map((star) => (
-            <button
-              key={star}
-              type="button"
-              onClick={() => setValue('rating', star)}
-              onMouseEnter={() => setHoveredRating(star)}
-              onMouseLeave={() => setHoveredRating(0)}
-              className="p-1 transition-colors"
-            >
-              <Star
-                className={`h-8 w-8 ${
-                  star <= (hoveredRating || currentRating)
-                    ? 'fill-yellow-400 text-yellow-400'
-                    : 'text-gray-300'
-                }`}
-              />
-            </button>
-          ))}
-        </div>
-        {currentRating > 0 && (
-          <p className="text-sm text-gray-600">
-            {currentRating === 1 && 'Poor'}
-            {currentRating === 2 && 'Fair'}
-            {currentRating === 3 && 'Good'}
-            {currentRating === 4 && 'Very Good'}
-            {currentRating === 5 && 'Excellent'}
-          </p>
-        )}
-        {errors.rating && (
-          <p className="text-sm text-red-500 flex items-center">
-            <AlertCircle className="h-4 w-4 mr-1" />
-            {errors.rating.message}
-          </p>
-        )}
-      </div>
-    )
-  }
-
-  // Form submission
-  const onSubmit = async (data: TestimonialForm) => {
-    try {
-      setIsSubmitting(true)
-      
-      const formData = new FormData()
-      formData.append('name', data.name)
-      formData.append('text', data.text)
-      formData.append('rating', data.rating.toString())
-      formData.append('category', data.category)
-      formData.append('allowSharing', data.allowSharing.toString())
-      
-      if (data.email) {
-        formData.append('email', data.email)
-      }
-      
-      if (data.video) {
-        formData.append('video', data.video)
-      }
-      
-      if (data.photo) {
-        formData.append('photo', data.photo)
-      }
-
-      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'
-      const response = await fetch(`${backendUrl}/submit-testimonial`, {
-        method: 'POST',
-        body: formData,
-      })
-
-      if (response.ok) {
-        setIsSuccess(true)
-        toast({
-          title: 'Success!',
-          description: 'Your testimonial has been submitted successfully.',
-        })
-      } else {
-        throw new Error('Failed to submit testimonial')
-      }
-    } catch (error) {
-      console.error('Error submitting testimonial:', error)
-      toast({
-        title: 'Error',
-        description: 'Failed to submit testimonial. Please try again.',
-        variant: 'destructive',
-      })
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
-
-  // Don't render until mounted to avoid hydration issues
+  // Don't render until mounted
   if (!mounted) {
     return (
-      <Card className="max-w-2xl mx-auto bg-white/80 backdrop-blur-sm border-0 shadow-lg">
+      <Card className="max-w-4xl mx-auto bg-white/80 backdrop-blur-sm border-0 shadow-lg">
         <CardContent className="p-8 text-center">
           <div className="animate-pulse">Loading...</div>
         </CardContent>
@@ -438,9 +184,196 @@ export function MultiStepCollectionForm({ userId }: MultiStepCollectionFormProps
     )
   }
 
+  // File validation functions
+  const validateVideo = (file: File): string | null => {
+    if (file.size > MAX_VIDEO_SIZE) {
+      return `Video is too large (${(file.size / (1024 * 1024)).toFixed(1)}MB). Maximum size allowed is 50MB.`
+    }
+    if (file.type && !ALLOWED_VIDEO_TYPES.includes(file.type)) {
+      return `Video type "${file.type}" is not supported. Please use MP4, MOV, WebM, or AVI format.`
+    }
+    const extension = '.' + file.name.split('.').pop()?.toLowerCase()
+    if (!ALLOWED_VIDEO_EXTENSIONS.includes(extension)) {
+      return `Video extension "${extension}" is not supported. Please use .mp4, .mov, .webm, or .avi files.`
+    }
+    return null
+  }
+
+  const validatePhoto = (file: File): string | null => {
+    if (file.size > MAX_PHOTO_SIZE) {
+      return `Photo is too large (${(file.size / (1024 * 1024)).toFixed(1)}MB). Maximum size allowed is 5MB.`
+    }
+    if (file.type && !ALLOWED_PHOTO_TYPES.includes(file.type)) {
+      return `Photo type "${file.type}" is not supported. Please use JPEG, PNG, or WebP format.`
+    }
+    const extension = '.' + file.name.split('.').pop()?.toLowerCase()
+    if (!ALLOWED_PHOTO_EXTENSIONS.includes(extension)) {
+      return `Photo extension "${extension}" is not supported. Please use .jpg, .jpeg, .png, or .webp files.`
+    }
+    return null
+  }
+
+  const handleVideoChange = (file: File | null) => {
+    if (!file) {
+      setSelectedVideo(null)
+      setVideoError('')
+      setValue('video', null)
+      clearErrors('video')
+      return
+    }
+
+    const error = validateVideo(file)
+    if (error) {
+      setVideoError(error)
+      setSelectedVideo(null)
+      setValue('video', null)
+      setError('video', { message: error })
+    } else {
+      setVideoError('')
+      setSelectedVideo(file)
+      setValue('video', file)
+      clearErrors('video')
+    }
+  }
+
+  const handlePhotoChange = (file: File | null) => {
+    if (!file) {
+      setSelectedPhoto(null)
+      setPhotoError('')
+      setValue('photo', null)
+      clearErrors('photo')
+      return
+    }
+
+    const error = validatePhoto(file)
+    if (error) {
+      setPhotoError(error)
+      setSelectedPhoto(null)
+      setValue('photo', null)
+      setError('photo', { message: error })
+    } else {
+      setPhotoError('')
+      setSelectedPhoto(file)
+      setValue('photo', file)
+      clearErrors('photo')
+    }
+  }
+
+  // Navigation functions
+  const nextStep = async () => {
+    const currentStepFields = getStepFields(currentStep)
+    const isValid = await trigger(currentStepFields)
+    
+    if (isValid) {
+      setCurrentStep(prev => Math.min(prev + 1, FORM_STEPS.length - 1))
+    }
+  }
+
+  const prevStep = () => {
+    setCurrentStep(prev => Math.max(prev - 1, 0))
+  }
+
+  const goToStep = (step: number) => {
+    setCurrentStep(step)
+  }
+
+  const getStepFields = (step: number): (keyof TestimonialForm)[] => {
+    switch (step) {
+      case 1: return ['name']
+      case 2: return ['text']
+      case 3: return ['rating', 'category']
+      case 4: return []
+      case 5: return []
+      default: return []
+    }
+  }
+
+  const isStepComplete = (step: number): boolean => {
+    const stepFields = getStepFields(step)
+    return stepFields.every(field => {
+      const value = formValues[field]
+      if (field === 'rating') return value > 0
+      if (field === 'category') return value !== ''
+      return value && value.toString().trim() !== ''
+    })
+  }
+
+  const onSubmit = async (data: TestimonialForm) => {
+    if (!userId) {
+      toast({
+        title: "Error",
+        description: "Invalid collection link. Please contact the business owner.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setIsSubmitting(true)
+    
+    try {
+      const formData = new FormData()
+      formData.append('user_id', userId)
+      formData.append('name', data.name.trim())
+      formData.append('text', data.text.trim())
+      formData.append('rating', data.rating.toString())
+      formData.append('category', data.category)
+      if (data.email) formData.append('email', data.email.trim())
+      if (data.company) formData.append('company', data.company.trim())
+      formData.append('allow_contact', data.allowContact.toString())
+      if (data.video) formData.append('video', data.video)
+      if (data.photo) formData.append('photo', data.photo)
+
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'
+      const response = await fetch(`${backendUrl}/submit-testimonial`, {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!response.ok) {
+        let errorMessage = 'Failed to submit testimonial'
+        try {
+          const errorData = await response.json()
+          errorMessage = errorData.detail || errorMessage
+        } catch (parseError) {
+          errorMessage = `Server error (${response.status}): ${response.statusText}`
+        }
+        throw new Error(errorMessage)
+      }
+
+      const result = await response.json()
+      setIsSuccess(true)
+      toast({
+        title: "Thank you!",
+        description: "Your testimonial has been submitted and is awaiting approval.",
+      })
+    } catch (error: any) {
+      console.error('Error submitting testimonial:', error)
+      
+      let errorMessage = error.message || 'An unexpected error occurred'
+      
+      if (error.message.includes('fetch')) {
+        errorMessage = 'Unable to connect to the server. Please check your internet connection and try again.'
+      } else if (error.message.includes('413')) {
+        errorMessage = 'File is too large. Please choose smaller files.'
+      } else if (error.message.includes('415')) {
+        errorMessage = 'File type not supported. Please use supported formats.'
+      } else if (error.message.includes('400')) {
+        errorMessage = error.message.replace('400:', '').trim()
+      }
+
+      toast({
+        title: "Submission Failed",
+        description: errorMessage,
+        variant: "destructive",
+      })
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
   if (isSuccess) {
     return (
-      <Card className="max-w-2xl mx-auto bg-white/80 backdrop-blur-sm border-0 shadow-lg">
+      <Card className="max-w-4xl mx-auto bg-white/80 backdrop-blur-sm border-0 shadow-lg">
         <CardContent className="p-12 text-center">
           <div className="bg-gradient-to-r from-green-500 to-emerald-500 p-4 rounded-full w-20 h-20 mx-auto mb-6 flex items-center justify-center">
             <CheckCircle className="h-10 w-10 text-white" />
@@ -452,8 +385,8 @@ export function MultiStepCollectionForm({ userId }: MultiStepCollectionFormProps
           <Button 
             onClick={() => {
               setIsSuccess(false)
-              setCurrentStep(1)
-              // Reset form here if needed
+              setCurrentStep(0)
+              window.location.reload()
             }} 
             variant="outline"
             className="border-2 hover:bg-gray-50 px-8 py-3"
@@ -465,11 +398,14 @@ export function MultiStepCollectionForm({ userId }: MultiStepCollectionFormProps
     )
   }
 
+  const currentStepData = FORM_STEPS[currentStep]
+  const progress = ((currentStep + 1) / FORM_STEPS.length) * 100
+
   return (
     <div className="space-y-8">
       {/* Personal Message */}
-      {personalMessage && (
-        <Card className="max-w-2xl mx-auto bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200 shadow-lg">
+      {personalMessage && currentStep === 0 && (
+        <Card className="max-w-4xl mx-auto bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200 shadow-lg">
           <CardContent className="p-8">
             <div className="flex items-start gap-4">
               <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-3 rounded-full">
@@ -485,86 +421,95 @@ export function MultiStepCollectionForm({ userId }: MultiStepCollectionFormProps
       )}
 
       {/* Progress Indicator */}
-      <div className="max-w-2xl mx-auto">
-        <div className="mb-8">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-gray-900">
-              Step {currentStep} of {FORM_STEPS.length}
-            </h2>
-            <span className="text-sm text-gray-500">
-              {Math.round(progressPercentage)}% Complete
+      <div className="max-w-4xl mx-auto">
+        <div className="mb-6">
+          <div className="flex justify-between items-center mb-2">
+            <span className="text-sm font-medium text-gray-700">
+              Step {currentStep + 1} of {FORM_STEPS.length}
             </span>
+            <span className="text-sm text-gray-500">{Math.round(progress)}% Complete</span>
           </div>
-          <Progress value={progressPercentage} className="h-2" />
-          
-          {/* Progress Saving Indicator */}
-          <div className="flex items-center justify-between mt-2">
-            {isProgressSaved && (
-              <div className="flex items-center text-xs text-green-600">
-                <CheckCircle className="h-3 w-3 mr-1" />
-                Progress saved
+          <Progress value={progress} className="h-2" />
+        </div>
+
+        {/* Step Navigation */}
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-2 mb-8">
+          {FORM_STEPS.map((step, index) => (
+            <button
+              key={step.id}
+              onClick={() => goToStep(index)}
+              className={`flex flex-col items-center p-3 rounded-lg border-2 transition-all ${
+                index === currentStep
+                  ? 'border-blue-500 bg-blue-50 text-blue-700'
+                  : index < currentStep
+                  ? 'border-green-500 bg-green-50 text-green-700'
+                  : 'border-gray-200 bg-gray-50 text-gray-500 hover:border-gray-300'
+              }`}
+            >
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center mb-1 ${
+                index === currentStep
+                  ? 'bg-blue-500 text-white'
+                  : index < currentStep
+                  ? 'bg-green-500 text-white'
+                  : 'bg-gray-300 text-gray-600'
+              }`}>
+                {index < currentStep ? (
+                  <CheckCircle className="h-4 w-4" />
+                ) : (
+                  <step.icon className="h-4 w-4" />
+                )}
               </div>
-            )}
-            {progressSaver.hasProgress(userId || '') && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={clearProgress}
-                className="text-xs text-gray-500 hover:text-red-600"
-              >
-                Clear saved progress
-              </Button>
-            )}
-          </div>
-          
-          {/* Step Indicators */}
-          <div className="flex justify-between mt-4">
-            {FORM_STEPS.map((step, index) => {
-              const StepIcon = step.icon
-              const isCompleted = currentStep > step.id
-              const isCurrent = currentStep === step.id
-              
-              return (
-                <div key={step.id} className="flex flex-col items-center">
-                  <div className={`
-                    w-10 h-10 rounded-full flex items-center justify-center mb-2 transition-all
-                    ${isCompleted 
-                      ? 'bg-green-500 text-white' 
-                      : isCurrent 
-                        ? 'bg-blue-500 text-white' 
-                        : 'bg-gray-200 text-gray-500'
-                    }
-                  `}>
-                    {isCompleted ? (
-                      <CheckCircle className="h-5 w-5" />
-                    ) : (
-                      <StepIcon className="h-5 w-5" />
-                    )}
-                  </div>
-                  <span className={`text-xs text-center ${isCurrent ? 'text-blue-600 font-medium' : 'text-gray-500'}`}>
-                    {step.title}
-                  </span>
-                </div>
-              )
-            })}
-          </div>
+              <span className="text-xs font-medium hidden md:block">{step.title}</span>
+            </button>
+          ))}
         </div>
       </div>
 
       {/* Main Form */}
-      <Card className="max-w-2xl mx-auto bg-white/80 backdrop-blur-sm border-0 shadow-lg">
+      <Card className="max-w-4xl mx-auto bg-white/80 backdrop-blur-sm border-0 shadow-lg">
         <CardHeader className="text-center pb-6">
-          <CardTitle className="text-2xl font-bold text-gray-900">
-            {FORM_STEPS[currentStep - 1].title}
-          </CardTitle>
+          <CardTitle className="text-2xl font-bold text-gray-900">{currentStepData.title}</CardTitle>
           <CardDescription className="text-gray-600 text-base">
-            {FORM_STEPS[currentStep - 1].description}
+            {currentStepData.description}
           </CardDescription>
         </CardHeader>
-        
         <CardContent className="p-8">
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-8">
+            {/* Step 0: Welcome */}
+            {currentStep === 0 && (
+              <div className="text-center space-y-6">
+                <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-6 rounded-full w-24 h-24 mx-auto flex items-center justify-center">
+                  <Heart className="h-12 w-12 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                    Share Your Experience
+                  </h3>
+                  <p className="text-gray-600 max-w-md mx-auto">
+                    Your testimonial helps others understand the value of this service. 
+                    This will only take a few minutes and we'll guide you through each step.
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-2xl mx-auto">
+                  <div className="text-center p-4 bg-blue-50 rounded-lg">
+                    <MessageSquare className="h-8 w-8 text-blue-600 mx-auto mb-2" />
+                    <h4 className="font-medium text-gray-900">Share Your Story</h4>
+                    <p className="text-sm text-gray-600">Tell us about your experience</p>
+                  </div>
+                  <div className="text-center p-4 bg-purple-50 rounded-lg">
+                    <Star className="h-8 w-8 text-purple-600 mx-auto mb-2" />
+                    <h4 className="font-medium text-gray-900">Rate & Categorize</h4>
+                    <p className="text-sm text-gray-600">Rate your experience</p>
+                  </div>
+                  <div className="text-center p-4 bg-green-50 rounded-lg">
+                    <CheckCircle className="h-8 w-8 text-green-600 mx-auto mb-2" />
+                    <h4 className="font-medium text-gray-900">Review & Submit</h4>
+                    <p className="text-sm text-gray-600">Review and submit</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Step 1: Basic Information */}
             {currentStep === 1 && (
               <div className="space-y-6">
@@ -576,7 +521,7 @@ export function MultiStepCollectionForm({ userId }: MultiStepCollectionFormProps
                     id="name"
                     {...register('name')}
                     placeholder="Enter your full name"
-                    className={`${errors.name ? 'border-red-500 focus:border-red-500' : 'focus:border-blue-500'} transition-colors`}
+                    className={`${errors.name ? 'border-red-500 focus:border-red-500' : 'focus:border-blue-500'}`}
                     maxLength={100}
                   />
                   {errors.name && (
@@ -595,82 +540,224 @@ export function MultiStepCollectionForm({ userId }: MultiStepCollectionFormProps
                     id="email"
                     type="email"
                     {...register('email')}
-                    placeholder="Enter your email address"
-                    className={`${errors.email ? 'border-red-500 focus:border-red-500' : 'focus:border-blue-500'} transition-colors`}
+                    placeholder="your.email@example.com"
+                    className="focus:border-blue-500"
                   />
-                  {errors.email && (
-                    <p className="text-sm text-red-500 mt-2 flex items-center">
-                      <AlertCircle className="h-4 w-4 mr-1" />
-                      {errors.email.message}
-                    </p>
-                  )}
-                  <p className="text-xs text-gray-500 mt-1">
-                    We&apos;ll use this to send you a copy of your testimonial
+                  <p className="text-sm text-gray-500 mt-1">
+                    We'll only use this to contact you if needed
                   </p>
+                </div>
+
+                <div>
+                  <Label htmlFor="company" className="text-sm font-medium text-gray-700 mb-2 block">
+                    Company/Organization (Optional)
+                  </Label>
+                  <Input
+                    id="company"
+                    {...register('company')}
+                    placeholder="Your company name"
+                    className="focus:border-blue-500"
+                    maxLength={100}
+                  />
                 </div>
               </div>
             )}
 
-            {/* Step 2: Experience Details */}
+            {/* Step 2: Experience */}
             {currentStep === 2 && (
               <div className="space-y-6">
-                <RatingInput />
+                <div>
+                  <Label htmlFor="text" className="text-sm font-medium text-gray-700 mb-2 block">
+                    Your Testimonial *
+                  </Label>
+                  <Textarea
+                    id="text"
+                    {...register('text')}
+                    placeholder="Share your experience and how this service helped you..."
+                    rows={6}
+                    className={`${errors.text ? 'border-red-500 focus:border-red-500' : 'focus:border-blue-500'}`}
+                    maxLength={500}
+                  />
+                  <div className="flex justify-between items-center mt-2">
+                    {errors.text && (
+                      <p className="text-sm text-red-500 flex items-center">
+                        <AlertCircle className="h-4 w-4 mr-1" />
+                        {errors.text.message}
+                      </p>
+                    )}
+                    <p className="text-sm text-gray-500 ml-auto">
+                      {formValues.text?.length || 0}/500 characters
+                    </p>
+                  </div>
+                </div>
+
+                <Alert className="bg-blue-50 border-blue-200">
+                  <MessageSquare className="h-4 w-4 text-blue-600" />
+                  <AlertDescription className="text-blue-800">
+                    <strong>Tip:</strong> Be specific about what you liked, how the service helped you, 
+                    and what others might find valuable about your experience.
+                  </AlertDescription>
+                </Alert>
+              </div>
+            )}
+
+            {/* Step 3: Rating & Category */}
+            {currentStep === 3 && (
+              <div className="space-y-8">
+                <div>
+                  <Label className="text-sm font-medium text-gray-700 mb-4 block">
+                    How would you rate your experience? *
+                  </Label>
+                  <div className="flex justify-center space-x-2">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <button
+                        key={star}
+                        type="button"
+                        onClick={() => setValue('rating', star)}
+                        className={`p-2 rounded-lg transition-all ${
+                          formValues.rating >= star
+                            ? 'text-yellow-500 bg-yellow-50'
+                            : 'text-gray-300 hover:text-yellow-400'
+                        }`}
+                      >
+                        <Star className="h-8 w-8 fill-current" />
+                      </button>
+                    ))}
+                  </div>
+                  {formValues.rating > 0 && (
+                    <p className="text-center text-sm text-gray-600 mt-2">
+                      {formValues.rating === 1 && 'Poor'}
+                      {formValues.rating === 2 && 'Fair'}
+                      {formValues.rating === 3 && 'Good'}
+                      {formValues.rating === 4 && 'Very Good'}
+                      {formValues.rating === 5 && 'Excellent'}
+                    </p>
+                  )}
+                  {errors.rating && (
+                    <p className="text-sm text-red-500 text-center mt-2">
+                      {errors.rating.message}
+                    </p>
+                  )}
+                </div>
 
                 <div>
-                  <Label htmlFor="category" className="text-sm font-medium text-gray-700 mb-2 block">
-                    Category *
+                  <Label className="text-sm font-medium text-gray-700 mb-4 block">
+                    What category best describes your experience? *
                   </Label>
-                  <select
-                    id="category"
-                    {...register('category')}
-                    className={`w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                      errors.category ? 'border-red-500' : 'border-gray-300'
-                    }`}
-                  >
-                    <option value="">Select a category</option>
-                    {CATEGORIES.map((category) => (
-                      <option key={category.value} value={category.value}>
-                        {category.label}
-                      </option>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {TESTIMONIAL_CATEGORIES.map((category) => (
+                      <button
+                        key={category.id}
+                        type="button"
+                        onClick={() => setValue('category', category.id)}
+                        className={`p-4 rounded-lg border-2 transition-all text-left ${
+                          formValues.category === category.id
+                            ? 'border-blue-500 bg-blue-50'
+                            : 'border-gray-200 hover:border-gray-300'
+                        }`}
+                      >
+                        <div className="flex items-center space-x-3">
+                          <span className="text-2xl">{category.icon}</span>
+                          <span className="font-medium text-gray-900">{category.label}</span>
+                        </div>
+                      </button>
                     ))}
-                  </select>
+                  </div>
                   {errors.category && (
-                    <p className="text-sm text-red-500 mt-2 flex items-center">
-                      <AlertCircle className="h-4 w-4 mr-1" />
+                    <p className="text-sm text-red-500 mt-2">
                       {errors.category.message}
                     </p>
                   )}
                 </div>
-
-                <div>
-                  <EnhancedTextarea
-                    id="text"
-                    value={watchedValues.text || ''}
-                    onChange={(value) => setValue('text', value)}
-                    placeholder="Share your experience and how this service helped you..."
-                    rows={5}
-                    maxLength={500}
-                    label="Your Testimonial *"
-                    error={errors.text?.message}
-                    className={errors.text ? 'border-red-500 focus:border-red-500' : 'focus:border-blue-500'}
-                  />
-                </div>
               </div>
             )}
 
-            {/* Step 3: Media & Preferences */}
-            {currentStep === 3 && (
-              <div className="space-y-6">
+            {/* Step 4: Media Upload */}
+            {currentStep === 4 && (
+              <div className="space-y-8">
                 <div>
-                  <Label className="text-sm font-medium text-gray-700 mb-2 block">
-                    Video Testimonial (Optional)
+                  <Label className="text-sm font-medium text-gray-700 mb-4 block">
+                    Add a Photo (Optional)
                   </Label>
-                  
-                  {selectedVideo && (
-                    <div className="mb-4 p-4 bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-lg">
+                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-blue-400 transition-colors">
+                    <Camera className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+                    <p className="text-sm text-gray-600 mb-2">
+                      Upload a photo to accompany your testimonial
+                    </p>
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      onChange={(e) => handlePhotoChange(e.target.files?.[0] || null)}
+                      className="hidden"
+                      id="photo-upload"
+                    />
+                    <label
+                      htmlFor="photo-upload"
+                      className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 cursor-pointer"
+                    >
+                      Choose Photo
+                    </label>
+                    <p className="text-xs text-gray-500 mt-2">
+                      JPEG, PNG, WebP up to 5MB
+                    </p>
+                  </div>
+                  {selectedPhoto && (
+                    <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center">
-                          <FileVideo className="h-6 w-6 text-green-600 mr-3" />
+                        <div className="flex items-center space-x-3">
+                          <Camera className="h-6 w-6 text-green-600" />
+                          <div>
+                            <p className="text-sm font-medium text-green-800">{selectedPhoto.name}</p>
+                            <p className="text-xs text-green-600">
+                              {(selectedPhoto.size / (1024 * 1024)).toFixed(1)} MB
+                            </p>
+                          </div>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handlePhotoChange(null)}
+                          className="text-green-600 hover:text-green-800"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <Label className="text-sm font-medium text-gray-700 mb-4 block">
+                    Add a Video (Optional)
+                  </Label>
+                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-blue-400 transition-colors">
+                    <FileVideo className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+                    <p className="text-sm text-gray-600 mb-2">
+                      Upload a video testimonial
+                    </p>
+                    <input
+                      type="file"
+                      accept="video/mp4,video/webm,video/quicktime,video/x-msvideo"
+                      onChange={(e) => handleVideoChange(e.target.files?.[0] || null)}
+                      className="hidden"
+                      id="video-upload"
+                    />
+                    <label
+                      htmlFor="video-upload"
+                      className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 cursor-pointer"
+                    >
+                      Choose Video
+                    </label>
+                    <p className="text-xs text-gray-500 mt-2">
+                      MP4, MOV, WebM, AVI up to 50MB
+                    </p>
+                  </div>
+                  {selectedVideo && (
+                    <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-3">
+                          <FileVideo className="h-6 w-6 text-green-600" />
                           <div>
                             <p className="text-sm font-medium text-green-800">{selectedVideo.name}</p>
                             <p className="text-xs text-green-600">
@@ -680,191 +767,99 @@ export function MultiStepCollectionForm({ userId }: MultiStepCollectionFormProps
                         </div>
                         <Button
                           type="button"
-                          size="sm"
                           variant="ghost"
+                          size="sm"
                           onClick={() => handleVideoChange(null)}
-                          className="text-green-600 hover:text-green-800 hover:bg-green-100"
+                          className="text-green-600 hover:text-green-800"
                         >
                           <X className="h-4 w-4" />
                         </Button>
                       </div>
                     </div>
                   )}
-
-                  {videoError && (
-                    <Alert className="mb-4" variant="destructive">
-                      <AlertCircle className="h-4 w-4" />
-                      <AlertDescription>{videoError}</AlertDescription>
-                    </Alert>
-                  )}
-
-                  <div className="flex justify-center px-6 pt-8 pb-8 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-400 transition-colors bg-gray-50 hover:bg-blue-50">
-                    <div className="space-y-3 text-center">
-                      <Upload className="mx-auto h-12 w-12 text-gray-400" />
-                      <div className="flex text-sm text-gray-600 justify-center">
-                        <label
-                          htmlFor="video-upload"
-                          className="relative cursor-pointer bg-white rounded-md font-medium text-blue-600 hover:text-blue-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-blue-500 px-4 py-2 border border-gray-300 hover:border-blue-400 transition-colors"
-                        >
-                          <span>{selectedVideo ? 'Choose different video' : 'Upload a video'}</span>
-                          <input
-                            id="video-upload"
-                            type="file"
-                            accept="video/*"
-                            className="sr-only"
-                            onChange={(e) => {
-                              const file = e.target.files?.[0] || null
-                              handleVideoChange(file)
-                            }}
-                          />
-                        </label>
-                        <p className="pl-3 self-center">or drag and drop</p>
-                      </div>
-                      <p className="text-xs text-gray-500">
-                        MP4, MOV, WebM, AVI up to 50MB
-                      </p>
-                    </div>
-                  </div>
                 </div>
 
-                <div>
-                  <Label className="text-sm font-medium text-gray-700 mb-2 block">
-                    Photo (Optional)
-                  </Label>
-                  
-                  {selectedPhoto && (
-                    <div className="mb-4 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center">
-                          <Camera className="h-6 w-6 text-blue-600 mr-3" />
-                          <div>
-                            <p className="text-sm font-medium text-blue-800">{selectedPhoto.name}</p>
-                            <p className="text-xs text-blue-600">
-                              {(selectedPhoto.size / (1024 * 1024)).toFixed(1)} MB
-                            </p>
-                          </div>
-                        </div>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => handlePhotoChange(null)}
-                          className="text-blue-600 hover:text-blue-800 hover:bg-blue-100"
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-
-                  {photoError && (
-                    <Alert className="mb-4" variant="destructive">
-                      <AlertCircle className="h-4 w-4" />
-                      <AlertDescription>{photoError}</AlertDescription>
-                    </Alert>
-                  )}
-
-                  <div className="flex justify-center px-6 pt-8 pb-8 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-400 transition-colors bg-gray-50 hover:bg-blue-50">
-                    <div className="space-y-3 text-center">
-                      <Camera className="mx-auto h-12 w-12 text-gray-400" />
-                      <div className="flex text-sm text-gray-600 justify-center">
-                        <label
-                          htmlFor="photo-upload"
-                          className="relative cursor-pointer bg-white rounded-md font-medium text-blue-600 hover:text-blue-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-blue-500 px-4 py-2 border border-gray-300 hover:border-blue-400 transition-colors"
-                        >
-                          <span>{selectedPhoto ? 'Choose different photo' : 'Upload a photo'}</span>
-                          <input
-                            id="photo-upload"
-                            type="file"
-                            accept="image/*"
-                            className="sr-only"
-                            onChange={(e) => {
-                              const file = e.target.files?.[0] || null
-                              handlePhotoChange(file)
-                            }}
-                          />
-                        </label>
-                        <p className="pl-3 self-center">or drag and drop</p>
-                      </div>
-                      <p className="text-xs text-gray-500">
-                        JPEG, PNG, WebP up to 5MB
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center space-x-2">
-                  <input
-                    type="checkbox"
-                    id="allowSharing"
-                    {...register('allowSharing')}
-                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                  />
-                  <Label htmlFor="allowSharing" className="text-sm text-gray-700">
-                    Allow my testimonial to be shared on social media
-                  </Label>
-                </div>
+                <Alert className="bg-blue-50 border-blue-200">
+                  <Camera className="h-4 w-4 text-blue-600" />
+                  <AlertDescription className="text-blue-800">
+                    <strong>Optional:</strong> Adding media can make your testimonial more engaging and authentic.
+                  </AlertDescription>
+                </Alert>
               </div>
             )}
 
-            {/* Step 4: Review & Submit */}
-            {currentStep === 4 && (
+            {/* Step 5: Review */}
+            {currentStep === 5 && (
               <div className="space-y-6">
-                <div className="bg-gray-50 p-6 rounded-lg">
+                <div className="bg-gray-50 rounded-lg p-6">
                   <h3 className="font-semibold text-gray-900 mb-4">Review Your Testimonial</h3>
                   
                   <div className="space-y-4">
                     <div>
-                      <span className="text-sm font-medium text-gray-600">Name:</span>
-                      <p className="text-gray-900">{watchedValues.name}</p>
+                      <Label className="text-sm font-medium text-gray-700">Name</Label>
+                      <p className="text-gray-900">{formValues.name}</p>
                     </div>
                     
-                    {watchedValues.email && (
+                    {formValues.email && (
                       <div>
-                        <span className="text-sm font-medium text-gray-600">Email:</span>
-                        <p className="text-gray-900">{watchedValues.email}</p>
+                        <Label className="text-sm font-medium text-gray-700">Email</Label>
+                        <p className="text-gray-900">{formValues.email}</p>
+                      </div>
+                    )}
+                    
+                    {formValues.company && (
+                      <div>
+                        <Label className="text-sm font-medium text-gray-700">Company</Label>
+                        <p className="text-gray-900">{formValues.company}</p>
                       </div>
                     )}
                     
                     <div>
-                      <span className="text-sm font-medium text-gray-600">Rating:</span>
-                      <div className="flex items-center mt-1">
+                      <Label className="text-sm font-medium text-gray-700">Rating</Label>
+                      <div className="flex items-center space-x-1">
                         {[1, 2, 3, 4, 5].map((star) => (
                           <Star
                             key={star}
                             className={`h-5 w-5 ${
-                              star <= (watchedValues.rating || 0)
-                                ? 'fill-yellow-400 text-yellow-400'
-                                : 'text-gray-300'
+                              formValues.rating >= star ? 'text-yellow-500 fill-current' : 'text-gray-300'
                             }`}
                           />
                         ))}
+                        <span className="ml-2 text-sm text-gray-600">
+                          ({formValues.rating}/5)
+                        </span>
                       </div>
                     </div>
                     
                     <div>
-                      <span className="text-sm font-medium text-gray-600">Category:</span>
-                      <p className="text-gray-900">
-                        {CATEGORIES.find(c => c.value === watchedValues.category)?.label}
-                      </p>
+                      <Label className="text-sm font-medium text-gray-700">Category</Label>
+                      <Badge variant="secondary" className="mt-1">
+                        {TESTIMONIAL_CATEGORIES.find(c => c.id === formValues.category)?.label}
+                      </Badge>
                     </div>
                     
                     <div>
-                      <span className="text-sm font-medium text-gray-600">Testimonial:</span>
-                      <p className="text-gray-900 mt-1">{watchedValues.text}</p>
+                      <Label className="text-sm font-medium text-gray-700">Testimonial</Label>
+                      <p className="text-gray-900 mt-1">{formValues.text}</p>
                     </div>
                     
-                    {selectedVideo && (
+                    {(selectedPhoto || selectedVideo) && (
                       <div>
-                        <span className="text-sm font-medium text-gray-600">Video:</span>
-                        <p className="text-gray-900">{selectedVideo.name}</p>
-                      </div>
-                    )}
-                    
-                    {selectedPhoto && (
-                      <div>
-                        <span className="text-sm font-medium text-gray-600">Photo:</span>
-                        <p className="text-gray-900">{selectedPhoto.name}</p>
+                        <Label className="text-sm font-medium text-gray-700">Media</Label>
+                        <div className="flex space-x-2 mt-1">
+                          {selectedPhoto && (
+                            <Badge variant="outline" className="flex items-center space-x-1">
+                              <Camera className="h-3 w-3" />
+                              <span>Photo</span>
+                            </Badge>
+                          )}
+                          {selectedVideo && (
+                            <Badge variant="outline" className="flex items-center space-x-1">
+                              <FileVideo className="h-3 w-3" />
+                              <span>Video</span>
+                            </Badge>
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -873,20 +868,22 @@ export function MultiStepCollectionForm({ userId }: MultiStepCollectionFormProps
                 <div className="flex items-center space-x-2">
                   <input
                     type="checkbox"
-                    id="termsAccepted"
-                    {...register('termsAccepted')}
+                    id="allowContact"
+                    {...register('allowContact')}
                     className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                   />
-                  <Label htmlFor="termsAccepted" className="text-sm text-gray-700">
-                    I accept the terms and conditions and agree to allow my testimonial to be used for promotional purposes
+                  <Label htmlFor="allowContact" className="text-sm text-gray-700">
+                    Allow the business to contact me if they have questions about my testimonial
                   </Label>
                 </div>
-                {errors.termsAccepted && (
-                  <p className="text-sm text-red-500 flex items-center">
-                    <AlertCircle className="h-4 w-4 mr-1" />
-                    {errors.termsAccepted.message}
-                  </p>
-                )}
+
+                <Alert className="bg-gray-50 border-gray-200">
+                  <Shield className="h-4 w-4 text-gray-600" />
+                  <AlertDescription className="text-gray-700">
+                    By submitting this testimonial, you agree to allow its use for promotional purposes. 
+                    All submissions are reviewed before publication.
+                  </AlertDescription>
+                </Alert>
               </div>
             )}
 
@@ -896,37 +893,37 @@ export function MultiStepCollectionForm({ userId }: MultiStepCollectionFormProps
                 type="button"
                 variant="outline"
                 onClick={prevStep}
-                disabled={currentStep === 1}
-                className="flex items-center"
+                disabled={currentStep === 0}
+                className="flex items-center space-x-2"
               >
-                <ChevronLeft className="h-4 w-4 mr-2" />
-                Previous
+                <ChevronLeft className="h-4 w-4" />
+                <span>Previous</span>
               </Button>
 
-              {currentStep < FORM_STEPS.length ? (
+              {currentStep < FORM_STEPS.length - 1 ? (
                 <Button
                   type="button"
                   onClick={nextStep}
-                  className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white"
+                  className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700"
                 >
-                  Next
-                  <ChevronRight className="h-4 w-4 ml-2" />
+                  <span>Next</span>
+                  <ChevronRight className="h-4 w-4" />
                 </Button>
               ) : (
                 <Button
                   type="submit"
                   disabled={isSubmitting}
-                  className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white"
+                  className="flex items-center space-x-2 bg-green-600 hover:bg-green-700"
                 >
                   {isSubmitting ? (
                     <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                      Submitting...
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      <span>Submitting...</span>
                     </>
                   ) : (
                     <>
-                      <CheckCircle className="h-4 w-4 mr-2" />
-                      Submit Testimonial
+                      <CheckCircle className="h-4 w-4" />
+                      <span>Submit Testimonial</span>
                     </>
                   )}
                 </Button>
@@ -935,6 +932,27 @@ export function MultiStepCollectionForm({ userId }: MultiStepCollectionFormProps
           </form>
         </CardContent>
       </Card>
+
+      {/* Trust Indicators */}
+      <div className="max-w-4xl mx-auto">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="text-center p-4 bg-white/60 backdrop-blur-sm rounded-lg border border-gray-200">
+            <Shield className="h-8 w-8 text-green-600 mx-auto mb-2" />
+            <h3 className="font-semibold text-gray-900 mb-1">Secure & Private</h3>
+            <p className="text-sm text-gray-600">Your data is protected</p>
+          </div>
+          <div className="text-center p-4 bg-white/60 backdrop-blur-sm rounded-lg border border-gray-200">
+            <Clock className="h-8 w-8 text-blue-600 mx-auto mb-2" />
+            <h3 className="font-semibold text-gray-900 mb-1">Quick Review</h3>
+            <p className="text-sm text-gray-600">Usually within 24 hours</p>
+          </div>
+          <div className="text-center p-4 bg-white/60 backdrop-blur-sm rounded-lg border border-gray-200">
+            <Users className="h-8 w-8 text-purple-600 mx-auto mb-2" />
+            <h3 className="font-semibold text-gray-900 mb-1">Help Others</h3>
+            <p className="text-sm text-gray-600">Share your experience</p>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

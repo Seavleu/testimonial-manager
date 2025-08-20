@@ -88,8 +88,20 @@ export default function WidgetTestPage() {
     script.id = 'testimonial-widget-script'
     script.src = '/widget.js'
     script.onload = () => {
-      setWidgetLoaded(true)
-      console.log('Widget script loaded successfully')
+      // Wait a bit to ensure the script has fully executed
+      setTimeout(() => {
+        if (window.TestimonialFlow) {
+          setWidgetLoaded(true)
+          console.log('Widget script loaded successfully')
+        } else {
+          console.error('TestimonialFlow not available after script load')
+          toast({
+            title: 'Widget Script Error',
+            description: 'Widget script loaded but TestimonialFlow object is not available.',
+            variant: 'destructive'
+          })
+        }
+      }, 100)
     }
     script.onerror = () => {
       console.error('Failed to load widget script')
@@ -105,6 +117,11 @@ export default function WidgetTestPage() {
   const initializeWidgets = () => {
     if (!window.TestimonialFlow) {
       console.error('TestimonialFlow not available')
+      toast({
+        title: 'Widget Error',
+        description: 'TestimonialFlow is not available. Please refresh the page.',
+        variant: 'destructive'
+      })
       return
     }
 
@@ -114,6 +131,7 @@ export default function WidgetTestPage() {
       'widget-cards-dark',
       'widget-list-light',
       'widget-list-dark',
+      'widget-carousel-light',
       'widget-embed-test'
     ]
 
@@ -157,6 +175,14 @@ export default function WidgetTestPage() {
           layout: 'list',
           theme: 'dark',
           container: 'widget-list-dark'
+        })
+
+        // Carousel Layout - Light Theme
+        new window.TestimonialFlow.Widget({
+          ...widgetConfig,
+          layout: 'carousel',
+          theme: 'light',
+          container: 'widget-carousel-light'
         })
 
         // Embed test widget
@@ -206,7 +232,7 @@ export default function WidgetTestPage() {
   }
 
   const refreshWidgets = () => {
-    const widgetContainers = ['widget-cards-light', 'widget-cards-dark', 'widget-list-light', 'widget-list-dark', 'widget-embed-test']
+    const widgetContainers = ['widget-cards-light', 'widget-cards-dark', 'widget-list-light', 'widget-list-dark', 'widget-carousel-light', 'widget-embed-test']
     widgetContainers.forEach(id => {
       const container = document.getElementById(id)
       if (container && (container as any).TestimonialFlowWidget) {
@@ -553,6 +579,24 @@ export default function WidgetTestPage() {
             </CardHeader>
             <CardContent>
               <div id="widget-list-dark" className="min-h-[400px] border-2 border-dashed border-gray-300 rounded-lg p-4 bg-gray-900">
+                {/* Widget will be rendered here */}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Carousel Layout - Light Theme */}
+          <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-lg">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Zap className="h-5 w-5 text-orange-600" />
+                Carousel Layout - Light Theme
+              </CardTitle>
+              <CardDescription>
+                Carousel layout with navigation arrows and dots
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div id="widget-carousel-light" className="min-h-[400px] border-2 border-dashed border-gray-300 rounded-lg p-4 bg-white">
                 {/* Widget will be rendered here */}
               </div>
             </CardContent>

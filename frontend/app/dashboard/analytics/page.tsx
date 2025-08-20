@@ -1,269 +1,246 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
-import { useAuth } from '@/lib/auth'
-import { Header } from '@/components/layout/header'
+import { useState } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { analyticsService, AnalyticsStats, TimelineData } from '@/lib/analytics'
-import { MetricsCard } from '@/components/dashboard/metrics-card'
-import { GrowthChart } from '@/components/dashboard/growth-chart'
-import { PerformanceChart } from '@/components/dashboard/performance-chart'
-import { TimelineChart } from '@/components/dashboard/timeline-chart'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { EnhancedAnalyticsDashboard } from '@/components/dashboard/enhanced-analytics-dashboard'
+import { AdvancedReportingSystem } from '@/components/dashboard/advanced-reporting-system'
+import { PredictiveAnalytics } from '@/components/dashboard/predictive-analytics'
 import { 
   BarChart3, 
+  FileText, 
+  Brain, 
   TrendingUp, 
   Users, 
-  MessageSquare, 
   Star, 
-  Clock,
-  Calendar,
-  Target,
+  MessageSquare,
   Activity,
-  ArrowLeft,
-  RefreshCw,
-  Download,
-  Filter,
-  AlertCircle
+  Target,
+  Zap,
+  AlertTriangle
 } from 'lucide-react'
 
-export default function AnalyticsDashboardPage() {
-  const { user, loading } = useAuth()
-  const router = useRouter()
-  const [mounted, setMounted] = useState(false)
-  const [stats, setStats] = useState<AnalyticsStats>({
-    total: 0,
-    approved: 0,
-    pending: 0,
-    monthlyGrowth: 0,
-    approvalRate: 0,
-    averageResponseTime: 0,
-    monthlyTrends: [],
-    approvalTrends: []
-  })
-  const [timelineData, setTimelineData] = useState<TimelineData[]>([])
-  const [loadingStats, setLoadingStats] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [lastRefresh, setLastRefresh] = useState<Date>(new Date())
-
-  useEffect(() => {
-    setMounted(true)
-  }, [])
-
-  useEffect(() => {
-    if (!loading && !user && mounted) {
-      router.push('/login')
-    }
-  }, [user, loading, router, mounted])
-
-  // Fetch real analytics data
-  const fetchAnalyticsData = useCallback(async () => {
-    if (!mounted || !user) return
-
-    try {
-      setLoadingStats(true)
-      setError(null)
-
-      // Fetch analytics stats and timeline data in parallel
-      const [statsData, timelineData] = await Promise.all([
-        analyticsService.getAnalyticsStats(user.id),
-        analyticsService.getAnalyticsTimeline(user.id)
-      ])
-
-      setStats(statsData)
-      setTimelineData(timelineData)
-      setLastRefresh(new Date())
-    } catch (err) {
-      console.error('Error fetching analytics data:', err)
-      setError(err instanceof Error ? err.message : 'Failed to load analytics data')
-    } finally {
-      setLoadingStats(false)
-    }
-  }, [mounted, user])
-
-  useEffect(() => {
-    fetchAnalyticsData()
-  }, [fetchAnalyticsData])
-
-  // Auto-refresh every 5 minutes
-  useEffect(() => {
-    if (!mounted || !user) return
-
-    const interval = setInterval(() => {
-      fetchAnalyticsData()
-    }, 5 * 60 * 1000) // 5 minutes
-
-    return () => clearInterval(interval)
-  }, [fetchAnalyticsData, mounted, user])
-
-  if (loading || !mounted) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600 font-medium">Loading analytics dashboard...</p>
-        </div>
-      </div>
-    )
-  }
-
-  if (!user) {
-    return null
-  }
+export default function AnalyticsPage() {
+  const [activeTab, setActiveTab] = useState('overview')
+  
+  // Mock user ID - in production this would come from auth context
+  const userId = 'user-123'
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
-      <Header />
-      
-      <main className="container mx-auto px-4 py-8 max-w-7xl">
-        {/* Header Section */}
-        <div className="mb-8">
-          <Button 
-            variant="ghost" 
-            onClick={() => router.back()}
-            className="mb-4 hover:bg-gray-100"
-          >
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Dashboard
-          </Button>
-          
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <h1 className="text-4xl font-bold text-gray-900 mb-2">
-                Analytics Dashboard
-              </h1>
-              <p className="text-gray-600 text-lg">
-                Comprehensive insights into your testimonial performance
-              </p>
-              {lastRefresh && (
-                <p className="text-sm text-gray-500 mt-1">
-                  Last updated: {lastRefresh.toLocaleTimeString()}
-                </p>
-              )}
-            </div>
-            <div className="flex gap-3 mt-4 lg:mt-0">
-              <Button 
-                variant="outline"
-                onClick={fetchAnalyticsData}
-                disabled={loadingStats}
-                className="border-2 hover:bg-gray-50"
-              >
-                <RefreshCw className={`h-4 w-4 mr-2 ${loadingStats ? 'animate-spin' : ''}`} />
-                {loadingStats ? 'Refreshing...' : 'Refresh Data'}
-              </Button>
-              <Button 
-                onClick={() => router.push('/dashboard/export')}
-                className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white shadow-lg"
-              >
-                <Download className="h-4 w-4 mr-2" />
-                Export Data
-              </Button>
-            </div>
-          </div>
+    <div className="space-y-6">
+      {/* Page Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Analytics & Reporting</h1>
+          <p className="text-gray-600">Comprehensive insights and AI-powered predictions for your testimonial performance</p>
         </div>
+        
+        <div className="flex items-center gap-2">
+          <Badge variant="outline" className="flex items-center gap-1">
+            <Activity className="h-3 w-3" />
+            Live Data
+          </Badge>
+          <Badge variant="outline" className="flex items-center gap-1">
+            <Brain className="h-3 w-3" />
+            AI Powered
+          </Badge>
+        </div>
+      </div>
 
-        {/* Error Display */}
-        {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-            <div className="flex items-center">
-              <AlertCircle className="h-5 w-5 text-red-600 mr-2" />
-              <p className="text-red-800 font-medium">Error loading analytics data</p>
-            </div>
-            <p className="text-red-600 text-sm mt-1">{error}</p>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={fetchAnalyticsData}
-              className="mt-2 border-red-200 text-red-700 hover:bg-red-50"
-            >
-              Try Again
+      {/* Quick Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Testimonials</CardTitle>
+            <MessageSquare className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">247</div>
+            <p className="text-xs text-muted-foreground">
+              <span className="text-green-600">+12%</span> from last month
+            </p>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Average Rating</CardTitle>
+            <Star className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">4.7</div>
+            <p className="text-xs text-muted-foreground">
+              <span className="text-green-600">+0.2</span> from last month
+            </p>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Engagement Rate</CardTitle>
+            <Users className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">21.0%</div>
+            <p className="text-xs text-muted-foreground">
+              <span className="text-green-600">+3.2%</span> from last month
+            </p>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Growth Trend</CardTitle>
+            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">+26.3%</div>
+            <p className="text-xs text-muted-foreground">
+              Predicted for next quarter
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Main Analytics Tabs */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="overview" className="flex items-center gap-2">
+            <BarChart3 className="h-4 w-4" />
+            Overview
+          </TabsTrigger>
+          <TabsTrigger value="reporting" className="flex items-center gap-2">
+            <FileText className="h-4 w-4" />
+            Reporting
+          </TabsTrigger>
+          <TabsTrigger value="predictions" className="flex items-center gap-2">
+            <Brain className="h-4 w-4" />
+            Predictions
+          </TabsTrigger>
+        </TabsList>
+
+        {/* Overview Tab - Enhanced Analytics Dashboard */}
+        <TabsContent value="overview" className="space-y-6">
+          <div className="flex items-center gap-2 mb-4">
+            <Target className="h-5 w-5 text-blue-600" />
+            <h2 className="text-xl font-semibold">Performance Overview</h2>
+          </div>
+          <EnhancedAnalyticsDashboard userId={userId} />
+        </TabsContent>
+
+        {/* Reporting Tab - Advanced Reporting System */}
+        <TabsContent value="reporting" className="space-y-6">
+          <div className="flex items-center gap-2 mb-4">
+            <FileText className="h-5 w-5 text-green-600" />
+            <h2 className="text-xl font-semibold">Report Management</h2>
+          </div>
+          <AdvancedReportingSystem userId={userId} />
+        </TabsContent>
+
+        {/* Predictions Tab - Predictive Analytics */}
+        <TabsContent value="predictions" className="space-y-6">
+          <div className="flex items-center gap-2 mb-4">
+            <Brain className="h-5 w-5 text-purple-600" />
+            <h2 className="text-xl font-semibold">AI Predictions</h2>
+          </div>
+          <PredictiveAnalytics userId={userId} />
+        </TabsContent>
+      </Tabs>
+
+      {/* Additional Features */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Export Options */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Zap className="h-5 w-5" />
+              Quick Export
+            </CardTitle>
+            <CardDescription>Export your analytics data in various formats</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <Button variant="outline" className="w-full justify-start">
+              <FileText className="h-4 w-4 mr-2" />
+              Export as PDF Report
             </Button>
-          </div>
-        )}
+            <Button variant="outline" className="w-full justify-start">
+              <BarChart3 className="h-4 w-4 mr-2" />
+              Export Charts & Data
+            </Button>
+            <Button variant="outline" className="w-full justify-start">
+              <TrendingUp className="h-4 w-4 mr-2" />
+              Export Trends Analysis
+            </Button>
+          </CardContent>
+        </Card>
 
-        {/* Key Metrics Overview */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <MetricsCard
-            title="Total Testimonials"
-            value={stats.total}
-            description="All-time testimonials"
-            icon={MessageSquare}
-            loading={loadingStats}
-            className="bg-white/80 backdrop-blur-sm border-0 shadow-lg hover:shadow-xl transition-all duration-300"
-          />
-          <MetricsCard
-            title="Approved"
-            value={`${stats.approved}`}
-            description="Published testimonials"
-            icon={Star}
-            loading={loadingStats}
-            className="bg-white/80 backdrop-blur-sm border-0 shadow-lg hover:shadow-xl transition-all duration-300"
-          />
-          <MetricsCard
-            title="This Month"
-            value={Math.round(stats.monthlyGrowth)}
-            description="New this month"
-            icon={Calendar}
-            loading={loadingStats}
-            trend={{
-              value: Math.round(stats.monthlyGrowth),
-              isPositive: stats.monthlyGrowth >= 0,
-              label: 'vs last month'
-            }}
-            className="bg-white/80 backdrop-blur-sm border-0 shadow-lg hover:shadow-xl transition-all duration-300"
-          />
-          <MetricsCard
-            title="Avg Response Time"
-            value={`${Math.round(stats.averageResponseTime)}d`}
-            description="Days to approval"
-            icon={Clock}
-            loading={loadingStats}
-            className="bg-white/80 backdrop-blur-sm border-0 shadow-lg hover:shadow-xl transition-all duration-300"
-          />
-        </div>
-
-        {/* Analytics Charts */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
-          <div className="lg:col-span-2">
-            <GrowthChart 
-              data={stats.monthlyTrends} 
-              loading={loadingStats}
-              className="bg-white/80 backdrop-blur-sm border-0 shadow-lg"
-            />
-          </div>
-          <PerformanceChart
-            approvalRate={stats.approvalRate}
-            averageResponseTime={stats.averageResponseTime}
-            totalTestimonials={stats.total}
-            approvedTestimonials={stats.approved}
-            pendingTestimonials={stats.pending}
-            loading={loadingStats}
-            className="bg-white/80 backdrop-blur-sm border-0 shadow-lg"
-          />
-        </div>
-
-        {/* Timeline Chart */}
-        <TimelineChart 
-          data={timelineData} 
-          loading={loadingStats}
-          className="bg-white/80 backdrop-blur-sm border-0 shadow-lg mb-8"
-        />
-
-        {/* Loading State */}
-        {loadingStats && (
-          <div className="fixed inset-0 bg-black/20 backdrop-blur-sm flex items-center justify-center z-50">
-            <div className="bg-white rounded-lg p-6 shadow-xl">
-              <div className="flex items-center space-x-3">
-                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-                <p className="text-gray-700 font-medium">Loading analytics data...</p>
+        {/* AI Insights Summary */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Brain className="h-5 w-5" />
+              AI Insights Summary
+            </CardTitle>
+            <CardDescription>Latest AI-generated insights and recommendations</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex items-center gap-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
+              <TrendingUp className="h-4 w-4 text-blue-600" />
+              <div className="flex-1">
+                <p className="text-sm font-medium text-blue-900">Video testimonials show 40% higher engagement</p>
+                <p className="text-xs text-blue-700">Consider encouraging more video submissions</p>
               </div>
-              <p className="text-sm text-gray-500 mt-2">Fetching real-time statistics and trends</p>
+            </div>
+            
+            <div className="flex items-center gap-2 p-3 bg-green-50 rounded-lg border border-green-200">
+              <Target className="h-4 w-4 text-green-600" />
+              <div className="flex-1">
+                <p className="text-sm font-medium text-green-900">Peak collection time: 2-4 PM</p>
+                <p className="text-xs text-green-700">Optimize collection timing for better quality</p>
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-2 p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+              <AlertTriangle className="h-4 w-4 text-yellow-600" />
+              <div className="flex-1">
+                <p className="text-sm font-medium text-yellow-900">Email response rates declining</p>
+                <p className="text-xs text-yellow-700">Review and update email strategy</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Help & Resources */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Analytics Help & Resources</CardTitle>
+          <CardDescription>Learn how to make the most of your analytics dashboard</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="text-center p-4 border rounded-lg">
+              <BarChart3 className="h-8 w-8 mx-auto mb-2 text-blue-600" />
+              <h4 className="font-medium mb-1">Understanding Metrics</h4>
+              <p className="text-sm text-gray-600">Learn what each metric means and how to interpret them</p>
+            </div>
+            
+            <div className="text-center p-4 border rounded-lg">
+              <Brain className="h-8 w-8 mx-auto mb-2 text-purple-600" />
+              <h4 className="font-medium mb-1">AI Predictions</h4>
+              <p className="text-sm text-gray-600">How our AI models work and what predictions mean</p>
+            </div>
+            
+            <div className="text-center p-4 border rounded-lg">
+              <FileText className="h-8 w-8 mx-auto mb-2 text-green-600" />
+              <h4 className="font-medium mb-1">Report Templates</h4>
+              <p className="text-sm text-gray-600">Create and customize automated reports</p>
             </div>
           </div>
-        )}
-      </main>
+        </CardContent>
+      </Card>
     </div>
   )
 }

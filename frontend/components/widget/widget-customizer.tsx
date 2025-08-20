@@ -22,7 +22,9 @@ import {
   Sparkles,
   Monitor,
   Smartphone,
-  Globe
+  Globe,
+  Star,
+  Calendar
 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 
@@ -42,7 +44,7 @@ interface WidgetSettings {
   lineHeight: number
   
   // Layout
-  layout: 'cards' | 'list' | 'carousel'
+  layout: 'cards' | 'list' | 'carousel' | 'grid' | 'masonry'
   position: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'center'
   width: number
   maxWidth: number
@@ -71,6 +73,29 @@ interface WidgetSettings {
   showCallToAction: boolean
   callToActionText: string
   callToActionUrl: string
+  
+  // Advanced Behavior
+  clickToExpand: boolean
+  expandAnimation: 'slide' | 'fade' | 'zoom' | 'flip'
+  expandDuration: number
+  hoverEffects: boolean
+  smoothTransitions: boolean
+  
+  // Social Media
+  socialPlatforms: string[]
+  socialSharingText: string
+  socialHashtags: string
+  
+  // Layout Options
+  gridColumns: number
+  carouselAutoplay: boolean
+  carouselSpeed: number
+  masonryLayout: boolean
+  responsiveBreakpoints: {
+    mobile: number
+    tablet: number
+    desktop: number
+  }
 }
 
 const DEFAULT_SETTINGS: WidgetSettings = {
@@ -117,7 +142,30 @@ const DEFAULT_SETTINGS: WidgetSettings = {
   showSocialSharing: false,
   showCallToAction: false,
   callToActionText: 'Leave a Review',
-  callToActionUrl: '#'
+  callToActionUrl: '#',
+  
+  // Advanced Behavior
+  clickToExpand: false,
+  expandAnimation: 'slide',
+  expandDuration: 300,
+  hoverEffects: true,
+  smoothTransitions: true,
+  
+  // Social Media
+  socialPlatforms: ['facebook', 'twitter', 'linkedin', 'whatsapp'],
+  socialSharingText: 'Check out this amazing testimonial!',
+  socialHashtags: '#testimonial #customerreview',
+  
+  // Layout Options
+  gridColumns: 2,
+  carouselAutoplay: true,
+  carouselSpeed: 3000,
+  masonryLayout: false,
+  responsiveBreakpoints: {
+    mobile: 1,
+    tablet: 2,
+    desktop: 4
+  }
 }
 
 const FONT_OPTIONS = [
@@ -159,6 +207,30 @@ const SHADOW_OPTIONS = [
   { value: 'light', label: 'Light' },
   { value: 'medium', label: 'Medium' },
   { value: 'heavy', label: 'Heavy' }
+]
+
+const EXPAND_ANIMATION_OPTIONS = [
+  { value: 'slide', label: 'Slide' },
+  { value: 'fade', label: 'Fade' },
+  { value: 'zoom', label: 'Zoom' },
+  { value: 'flip', label: 'Flip' }
+]
+
+const SOCIAL_PLATFORMS = [
+  { value: 'facebook', label: 'Facebook', icon: '📘' },
+  { value: 'twitter', label: 'Twitter', icon: '🐦' },
+  { value: 'linkedin', label: 'LinkedIn', icon: '💼' },
+  { value: 'whatsapp', label: 'WhatsApp', icon: '💬' },
+  { value: 'instagram', label: 'Instagram', icon: '📷' },
+  { value: 'pinterest', label: 'Pinterest', icon: '📌' }
+]
+
+const LAYOUT_OPTIONS = [
+  { value: 'cards', label: 'Cards' },
+  { value: 'list', label: 'List' },
+  { value: 'carousel', label: 'Carousel' },
+  { value: 'grid', label: 'Grid' },
+  { value: 'masonry', label: 'Masonry' }
 ]
 
 interface WidgetCustomizerProps {
@@ -301,6 +373,69 @@ ${generateCustomCSS()}
         variant: 'destructive'
       })
     }
+  }
+
+  const saveConfiguration = () => {
+    try {
+      const config = {
+        settings,
+        timestamp: new Date().toISOString(),
+        userId
+      }
+      
+      const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `widget-config-${userId}-${new Date().toISOString().split('T')[0]}.json`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      
+      toast({
+        title: 'Configuration Saved',
+        description: 'Widget configuration has been downloaded successfully.'
+      })
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to save configuration.',
+        variant: 'destructive'
+      })
+    }
+  }
+
+  const loadConfiguration = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      try {
+        const config = JSON.parse(e.target?.result as string)
+        if (config.settings && config.userId === userId) {
+          setSettings(config.settings)
+          toast({
+            title: 'Configuration Loaded',
+            description: 'Widget configuration has been loaded successfully.'
+          })
+        } else {
+          toast({
+            title: 'Error',
+            description: 'Invalid configuration file.',
+            variant: 'destructive'
+          })
+        }
+      } catch (error) {
+        toast({
+          title: 'Error',
+          description: 'Failed to parse configuration file.',
+          variant: 'destructive'
+        })
+      }
+    }
+    reader.readAsText(file)
   }
 
   const tabs = [
@@ -544,18 +679,79 @@ ${generateCustomCSS()}
                     <Label htmlFor="layout">Layout Type</Label>
                     <Select
                       value={settings.layout}
-                      onValueChange={(value: 'cards' | 'list' | 'carousel') => updateSetting('layout', value)}
+                      onValueChange={(value: 'cards' | 'list' | 'carousel' | 'grid' | 'masonry') => updateSetting('layout', value)}
                     >
                       <SelectTrigger className="mt-1">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="cards">Cards Grid</SelectItem>
-                        <SelectItem value="list">Vertical List</SelectItem>
-                        <SelectItem value="carousel">Carousel</SelectItem>
+                        {LAYOUT_OPTIONS.map((layout) => (
+                          <SelectItem key={layout.value} value={layout.value}>
+                            {layout.label}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
+
+                  {/* Advanced Layout Options */}
+                  {settings.layout === 'grid' && (
+                    <div>
+                      <Label htmlFor="gridColumns">Grid Columns</Label>
+                      <div className="flex items-center gap-2 mt-1">
+                        <Slider
+                          value={[settings.gridColumns]}
+                          onValueChange={([value]) => updateSetting('gridColumns', value)}
+                          min={1}
+                          max={6}
+                          step={1}
+                          className="flex-1"
+                        />
+                        <span className="text-sm text-gray-500 w-8">{settings.gridColumns}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {settings.layout === 'carousel' && (
+                    <>
+                      <div className="flex items-center space-x-3">
+                        <Switch
+                          id="carouselAutoplay"
+                          checked={settings.carouselAutoplay}
+                          onCheckedChange={(checked) => updateSetting('carouselAutoplay', checked)}
+                        />
+                        <Label htmlFor="carouselAutoplay">Auto-play Carousel</Label>
+                      </div>
+
+                      {settings.carouselAutoplay && (
+                        <div>
+                          <Label htmlFor="carouselSpeed">Carousel Speed (ms)</Label>
+                          <div className="flex items-center gap-2 mt-1">
+                            <Slider
+                              value={[settings.carouselSpeed]}
+                              onValueChange={([value]) => updateSetting('carouselSpeed', value)}
+                              min={1000}
+                              max={10000}
+                              step={500}
+                              className="flex-1"
+                            />
+                            <span className="text-sm text-gray-500 w-12">{settings.carouselSpeed}</span>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {settings.layout === 'masonry' && (
+                    <div className="flex items-center space-x-3">
+                      <Switch
+                        id="masonryLayout"
+                        checked={settings.masonryLayout}
+                        onCheckedChange={(checked) => updateSetting('masonryLayout', checked)}
+                      />
+                      <Label htmlFor="masonryLayout">Enable Masonry Layout</Label>
+                    </div>
+                  )}
 
                   <div>
                     <Label htmlFor="position">Position</Label>
@@ -723,6 +919,74 @@ ${generateCustomCSS()}
                       </SelectContent>
                     </Select>
                   </div>
+
+                  {/* Advanced Behavior Controls */}
+                  <Separator />
+                  <h4 className="font-medium text-sm">Advanced Behavior</h4>
+                  
+                  <div className="flex items-center space-x-3">
+                    <Switch
+                      id="clickToExpand"
+                      checked={settings.clickToExpand}
+                      onCheckedChange={(checked) => updateSetting('clickToExpand', checked)}
+                    />
+                    <Label htmlFor="clickToExpand">Click to Expand</Label>
+                  </div>
+
+                  {settings.clickToExpand && (
+                    <>
+                      <div>
+                        <Label htmlFor="expandAnimation">Expand Animation</Label>
+                        <Select
+                          value={settings.expandAnimation}
+                          onValueChange={(value: 'slide' | 'fade' | 'zoom' | 'flip') => updateSetting('expandAnimation', value)}
+                        >
+                          <SelectTrigger className="mt-1">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {EXPAND_ANIMATION_OPTIONS.map((animation) => (
+                              <SelectItem key={animation.value} value={animation.value}>
+                                {animation.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div>
+                        <Label htmlFor="expandDuration">Animation Duration (ms)</Label>
+                        <Input
+                          id="expandDuration"
+                          type="number"
+                          min="100"
+                          max="1000"
+                          step="50"
+                          value={settings.expandDuration}
+                          onChange={(e) => updateSetting('expandDuration', parseInt(e.target.value) || 300)}
+                          className="mt-1"
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  <div className="flex items-center space-x-3">
+                    <Switch
+                      id="hoverEffects"
+                      checked={settings.hoverEffects}
+                      onCheckedChange={(checked) => updateSetting('hoverEffects', checked)}
+                    />
+                    <Label htmlFor="hoverEffects">Hover Effects</Label>
+                  </div>
+
+                  <div className="flex items-center space-x-3">
+                    <Switch
+                      id="smoothTransitions"
+                      checked={settings.smoothTransitions}
+                      onCheckedChange={(checked) => updateSetting('smoothTransitions', checked)}
+                    />
+                    <Label htmlFor="smoothTransitions">Smooth Transitions</Label>
+                  </div>
                 </div>
               )}
 
@@ -850,6 +1114,107 @@ ${generateCustomCSS()}
                       <RotateCcw className="h-4 w-4" />
                     </Button>
                   </div>
+
+                  <Separator />
+
+                  {/* Social Media Integration */}
+                  <div>
+                    <Label className="text-sm font-medium text-gray-700 mb-2 block">
+                      Social Media Integration
+                    </Label>
+                    
+                    <div className="space-y-3">
+                      <div className="flex items-center space-x-3">
+                        <Switch
+                          id="showSocialSharing"
+                          checked={settings.showSocialSharing}
+                          onCheckedChange={(checked) => updateSetting('showSocialSharing', checked)}
+                        />
+                        <Label htmlFor="showSocialSharing">Enable Social Sharing</Label>
+                      </div>
+
+                      {settings.showSocialSharing && (
+                        <>
+                          <div>
+                            <Label htmlFor="socialPlatforms">Social Platforms</Label>
+                            <div className="grid grid-cols-2 gap-2 mt-1">
+                              {SOCIAL_PLATFORMS.map((platform) => (
+                                <div key={platform.value} className="flex items-center space-x-2">
+                                  <input
+                                    type="checkbox"
+                                    id={`platform-${platform.value}`}
+                                    checked={settings.socialPlatforms.includes(platform.value)}
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        updateSetting('socialPlatforms', [...settings.socialPlatforms, platform.value])
+                                      } else {
+                                        updateSetting('socialPlatforms', settings.socialPlatforms.filter(p => p !== platform.value))
+                                      }
+                                    }}
+                                    className="rounded border-gray-300"
+                                  />
+                                  <Label htmlFor={`platform-${platform.value}`} className="text-sm">
+                                    {platform.icon} {platform.label}
+                                  </Label>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div>
+                            <Label htmlFor="socialSharingText">Sharing Text</Label>
+                            <Input
+                              id="socialSharingText"
+                              value={settings.socialSharingText}
+                              onChange={(e) => updateSetting('socialSharingText', e.target.value)}
+                              placeholder="Check out this amazing testimonial!"
+                              className="mt-1"
+                            />
+                          </div>
+
+                          <div>
+                            <Label htmlFor="socialHashtags">Hashtags</Label>
+                            <Input
+                              id="socialHashtags"
+                              value={settings.socialHashtags}
+                              onChange={(e) => updateSetting('socialHashtags', e.target.value)}
+                              placeholder="#testimonial #customerreview"
+                              className="mt-1"
+                            />
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  <div>
+                    <Label className="text-sm font-medium text-gray-700 mb-2 block">
+                      Configuration Management
+                    </Label>
+                    <div className="flex gap-2">
+                      <Button onClick={saveConfiguration} variant="outline" size="sm" className="flex-1">
+                        <Download className="h-4 w-4 mr-2" />
+                        Save Config
+                      </Button>
+                      <div className="relative">
+                        <input
+                          type="file"
+                          accept=".json"
+                          onChange={loadConfiguration}
+                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                          id="load-config"
+                        />
+                        <Button variant="outline" size="sm" asChild>
+                          <label htmlFor="load-config" className="cursor-pointer">
+                            <Upload className="h-4 w-4 mr-2" />
+                            Load Config
+                          </label>
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
             </CardContent>
@@ -910,11 +1275,149 @@ ${generateCustomCSS()}
                     boxShadow: getShadowValue(settings.shadow)
                   }}
                 >
-                  {/* Preview content will be injected here */}
-                  <div className="text-center py-8 text-gray-500">
-                    <Globe className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                    <p>Widget preview will appear here</p>
-                    <p className="text-sm">Configure your settings to see the live preview</p>
+                  {/* Live Preview Content */}
+                  <div className="space-y-4">
+                    {/* Mock Testimonial 1 */}
+                    <div className="border rounded-lg p-4" style={{ borderColor: settings.borderColor, borderRadius: `${settings.borderRadius}px` }}>
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex items-center space-x-3">
+                          <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold text-sm" style={{ backgroundColor: settings.primaryColor }}>
+                            S
+                          </div>
+                          <div>
+                            <h4 className="font-semibold" style={{ color: settings.primaryColor }}>Sarah Johnson</h4>
+                            <p className="text-sm" style={{ color: settings.secondaryColor }}>TechCorp Inc.</p>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {settings.showRatings && (
+                        <div className="flex items-center space-x-1 mb-3">
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <Star key={star} className="h-4 w-4 text-yellow-400 fill-current" />
+                          ))}
+                          <span className="text-sm ml-2" style={{ color: settings.secondaryColor }}>5/5</span>
+                        </div>
+                      )}
+                      
+                      <p className="mb-3 leading-relaxed" style={{ color: settings.textColor }}>
+                        "This service completely transformed our business. The quality and attention to detail exceeded all our expectations. Highly recommend!"
+                      </p>
+                      
+                      <div className="flex items-center justify-between">
+                        {settings.showDates && (
+                          <div className="flex items-center space-x-1 text-sm" style={{ color: settings.secondaryColor }}>
+                            <Calendar className="h-3 w-3" />
+                            <span>Jan 15, 2025</span>
+                          </div>
+                        )}
+                        
+                        {/* Social Sharing Buttons */}
+                        {settings.showSocialSharing && (
+                          <div className="flex items-center space-x-2">
+                            {settings.socialPlatforms.map((platform) => (
+                              <button
+                                key={platform}
+                                className="w-6 h-6 rounded-full flex items-center justify-center text-xs hover:scale-110 transition-transform"
+                                style={{ backgroundColor: settings.accentColor, color: 'white' }}
+                                title={`Share on ${platform}`}
+                              >
+                                {platform === 'facebook' && '📘'}
+                                {platform === 'twitter' && '🐦'}
+                                {platform === 'linkedin' && '💼'}
+                                {platform === 'whatsapp' && '💬'}
+                                {platform === 'instagram' && '📷'}
+                                {platform === 'pinterest' && '📌'}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Call to Action Button */}
+                      {settings.showCallToAction && (
+                        <div className="mt-3 pt-3 border-t" style={{ borderColor: settings.borderColor }}>
+                          <a
+                            href={settings.callToActionUrl}
+                            className="inline-block px-4 py-2 rounded-md text-white font-medium hover:opacity-90 transition-opacity"
+                            style={{ backgroundColor: settings.accentColor }}
+                          >
+                            {settings.callToActionText}
+                          </a>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Mock Testimonial 2 */}
+                    <div className="border rounded-lg p-4" style={{ borderColor: settings.borderColor, borderRadius: `${settings.borderRadius}px` }}>
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex items-center space-x-3">
+                          <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold text-sm" style={{ backgroundColor: settings.primaryColor }}>
+                            M
+                          </div>
+                          <div>
+                            <h4 className="font-semibold" style={{ color: settings.primaryColor }}>Michael Chen</h4>
+                            <p className="text-sm" style={{ color: settings.secondaryColor }}>StartupXYZ</p>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {settings.showRatings && (
+                        <div className="flex items-center space-x-1 mb-3">
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <Star key={star} className="h-4 w-4 text-yellow-400 fill-current" />
+                          ))}
+                          <span className="text-sm ml-2" style={{ color: settings.secondaryColor }}>5/5</span>
+                        </div>
+                      )}
+                      
+                      <p className="mb-3 leading-relaxed" style={{ color: settings.textColor }}>
+                        "Outstanding customer service and incredible results. The team went above and beyond to deliver exactly what we needed."
+                      </p>
+                      
+                      <div className="flex items-center justify-between">
+                        {settings.showDates && (
+                          <div className="flex items-center space-x-1 text-sm" style={{ color: settings.secondaryColor }}>
+                            <Calendar className="h-3 w-3" />
+                            <span>Jan 14, 2025</span>
+                          </div>
+                        )}
+                        
+                        {/* Social Sharing Buttons */}
+                        {settings.showSocialSharing && (
+                          <div className="flex items-center space-x-2">
+                            {settings.socialPlatforms.map((platform) => (
+                              <button
+                                key={platform}
+                                className="w-6 h-6 rounded-full flex items-center justify-center text-xs hover:scale-110 transition-transform"
+                                style={{ backgroundColor: settings.accentColor, color: 'white' }}
+                                title={`Share on ${platform}`}
+                              >
+                                {platform === 'facebook' && '📘'}
+                                {platform === 'twitter' && '🐦'}
+                                {platform === 'linkedin' && '💼'}
+                                {platform === 'whatsapp' && '💬'}
+                                {platform === 'instagram' && '📷'}
+                                {platform === 'pinterest' && '📌'}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Call to Action Button */}
+                      {settings.showCallToAction && (
+                        <div className="mt-3 pt-3 border-t" style={{ borderColor: settings.borderColor }}>
+                          <a
+                            href={settings.callToActionUrl}
+                            className="inline-block px-4 py-2 rounded-md text-white font-medium hover:opacity-90 transition-opacity"
+                            style={{ backgroundColor: settings.accentColor }}
+                          >
+                            {settings.callToActionText}
+                          </a>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
