@@ -7,6 +7,18 @@ import uuid
 from typing import Optional, Dict, Any
 from dotenv import load_dotenv
 from notification_service import NotificationService
+from error_handler import (
+    global_exception_handler, 
+    CustomHTTPException, 
+    ErrorCodes, 
+    create_error_response,
+    handle_database_error,
+    handle_email_error,
+    handle_not_found_error,
+    handle_unauthorized_error,
+    handle_forbidden_error,
+    error_monitor
+)
 
 # Load environment variables
 load_dotenv()
@@ -16,6 +28,9 @@ app = FastAPI(
     description="Backend API for TestimonialFlow - Collect and manage customer testimonials",
     version="1.0.0"
 )
+
+# Add global exception handler
+app.add_exception_handler(Exception, global_exception_handler)
 
 # Add CORS middleware
 app.add_middleware(
@@ -43,43 +58,40 @@ def get_supabase_client() -> Client:
         try:
             _supabase_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
         except Exception as e:
-            print(f"Failed to create Supabase client: {str(e)}")
-            raise HTTPException(
-                status_code=503,
-                detail=f"Database connection failed: {str(e)}"
+            error_monitor.record_error(ErrorCodes.CONNECTION_ERROR, {"error": str(e)})
+            raise CustomHTTPException(
+                error_code=ErrorCodes.CONNECTION_ERROR,
+                message="Unable to connect to the database. Please try again later.",
+                status_code=503
             )
     return _supabase_client
 
 @app.get("/")
 async def root():
     """Health check endpoint"""
-    return {
-        "message": "TestimonialFlow API is running",
-        "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat()
-    }
+    return {"message": "TestimonialFlow API is running", "status": "healthy", "timestamp": datetime.utcnow().isoformat()}
 
 @app.get("/health")
 async def health_check():
     """Detailed health check endpoint"""
     try:
-        # Test Supabase connection
+        # Test database connection
         supabase = get_supabase_client()
-        response = supabase.table('testimonials').select('id').limit(1).execute()
+        supabase.table('testimonials').select('id').limit(1).execute()
+        
         return {
             "status": "healthy",
             "database": "connected",
             "timestamp": datetime.utcnow().isoformat(),
-            "supabase_url": SUPABASE_URL[:50] + "..." if SUPABASE_URL else "Not set"
+            "version": "1.0.0"
         }
     except Exception as e:
-        print(f"Health check failed: {str(e)}")
-        return {
-            "status": "unhealthy",
-            "database": "disconnected",
-            "error": str(e),
-            "timestamp": datetime.utcnow().isoformat()
-        }
+        error_monitor.record_error(ErrorCodes.SERVICE_UNAVAILABLE, {"error": str(e)})
+        raise CustomHTTPException(
+            error_code=ErrorCodes.SERVICE_UNAVAILABLE,
+            message="Service health check failed",
+            status_code=503
+        )
 
 @app.post("/submit-testimonial")
 async def submit_testimonial(
@@ -110,9 +122,9 @@ async def submit_testimonial(
     try:
         uuid.UUID(user_id)
     except ValueError:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid user ID format. Please use a valid collection link."
+        raise CustomHTTPException(
+            error_code=ErrorCodes.INVALID_INPUT,
+            message="Invalid user ID format. Please use a valid collection link."
         )
     
     # Validate and sanitize input
@@ -120,34 +132,34 @@ async def submit_testimonial(
     text = text.strip()
     
     if not name:
-        raise HTTPException(
-            status_code=400,
-            detail="Name is required and cannot be empty."
+        raise CustomHTTPException(
+            error_code=ErrorCodes.INVALID_INPUT,
+            message="Name is required and cannot be empty."
         )
     
     if not text:
-        raise HTTPException(
-            status_code=400,
-            detail="Testimonial text is required and cannot be empty."
+        raise CustomHTTPException(
+            error_code=ErrorCodes.INVALID_INPUT,
+            message="Testimonial text is required and cannot be empty."
         )
     
     # Validate input lengths
     if len(name) > 100:
-        raise HTTPException(
-            status_code=400,
-            detail="Name is too long. Please limit to 100 characters or less."
+        raise CustomHTTPException(
+            error_code=ErrorCodes.INVALID_INPUT,
+            message="Name is too long. Please limit to 100 characters or less."
         )
     
     if len(text) > 500:
-        raise HTTPException(
-            status_code=400,
-            detail="Testimonial is too long. Please limit to 500 characters or less."
+        raise CustomHTTPException(
+            error_code=ErrorCodes.INVALID_INPUT,
+            message="Testimonial is too long. Please limit to 500 characters or less."
         )
         
     if len(text) < 10:
-        raise HTTPException(
-            status_code=400,
-            detail="Testimonial is too short. Please write at least 10 characters."
+        raise CustomHTTPException(
+            error_code=ErrorCodes.INVALID_INPUT,
+            message="Testimonial is too short. Please write at least 10 characters."
         )
     
     try:
@@ -175,27 +187,27 @@ async def submit_testimonial(
             
             # Detailed validation with specific error messages
             if not video.filename:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Video file appears to be corrupted or empty. Please select a valid video file."
+                raise CustomHTTPException(
+                    error_code=ErrorCodes.INVALID_INPUT,
+                    message="Video file appears to be corrupted or empty. Please select a valid video file."
                 )
             
             if not file_extension:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Video file must have a valid extension. Please use .mp4, .mov, .webm, or .avi files."
+                raise CustomHTTPException(
+                    error_code=ErrorCodes.INVALID_INPUT,
+                    message="Video file must have a valid extension. Please use .mp4, .mov, .webm, or .avi files."
                 )
             
             if file_extension not in valid_extensions:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Video file type '{file_extension}' is not supported. Please use MP4, MOV, WebM, or AVI format."
+                raise CustomHTTPException(
+                    error_code=ErrorCodes.INVALID_INPUT,
+                    message=f"Video file type '{file_extension}' is not supported. Please use MP4, MOV, WebM, or AVI format."
                 )
             
             if video.content_type and video.content_type not in valid_video_types and not video.content_type.startswith('video/'):
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"File type '{video.content_type}' is not a valid video format. Please use MP4, MOV, WebM, or AVI format."
+                raise CustomHTTPException(
+                    error_code=ErrorCodes.INVALID_INPUT,
+                    message=f"File type '{video.content_type}' is not a valid video format. Please use MP4, MOV, WebM, or AVI format."
                 )
             
             try:
@@ -203,17 +215,17 @@ async def submit_testimonial(
                 file_content = await video.read()
                 
                 if not file_content:
-                    raise HTTPException(
-                        status_code=400,
-                        detail="Video file appears to be empty. Please select a valid video file."
+                    raise CustomHTTPException(
+                        error_code=ErrorCodes.INVALID_INPUT,
+                        message="Video file appears to be empty. Please select a valid video file."
                     )
                 
                 # Check file size (50MB limit as per migration)
                 if len(file_content) > 52428800:  # 50MB in bytes
                     file_size_mb = len(file_content) / (1024 * 1024)
-                    raise HTTPException(
-                        status_code=413,
-                        detail=f"Video file is too large ({file_size_mb:.1f}MB). Maximum size allowed is 50MB. Please compress your video or choose a smaller file."
+                    raise CustomHTTPException(
+                        error_code=ErrorCodes.INVALID_INPUT,
+                        message=f"Video file is too large ({file_size_mb:.1f}MB). Maximum size allowed is 50MB. Please compress your video or choose a smaller file."
                     )
                 
                 # Generate safe filename
@@ -235,9 +247,9 @@ async def submit_testimonial(
                     # Check if upload was successful
                     if hasattr(storage_response, 'error') and storage_response.error:
                         print(f"Upload error: {storage_response.error}")
-                        raise HTTPException(
-                            status_code=500,
-                            detail=f"Failed to upload video: {storage_response.error}"
+                        raise CustomHTTPException(
+                            error_code=ErrorCodes.INTERNAL_SERVER_ERROR,
+                            message=f"Failed to upload video: {storage_response.error}"
                         )
                     
                     # Always construct the URL manually for reliability
@@ -251,18 +263,18 @@ async def submit_testimonial(
                         video_url = f"{SUPABASE_URL}/storage/v1/object/public/testimonial-videos/{filename}"
                         print(f"File exists, using URL: {video_url}")
                     else:
-                        raise HTTPException(
-                            status_code=500,
-                            detail=f"Failed to upload video: {str(storage_error)}"
+                        raise CustomHTTPException(
+                            error_code=ErrorCodes.INTERNAL_SERVER_ERROR,
+                            message=f"Failed to upload video: {str(storage_error)}"
                         )
                         
-            except HTTPException:
+            except CustomHTTPException:
                 raise
             except Exception as file_error:
                 print(f"File processing error: {str(file_error)}")
-                raise HTTPException(
-                    status_code=500,
-                    detail="Failed to process video file. Please check the file format and try again."
+                raise CustomHTTPException(
+                    error_code=ErrorCodes.INTERNAL_SERVER_ERROR,
+                    message="Failed to process video file. Please check the file format and try again."
                 )
         
         # Handle photo upload if provided
@@ -274,32 +286,32 @@ async def submit_testimonial(
             file_extension = '.' + photo.filename.split('.')[-1].lower() if photo.filename and '.' in photo.filename else ''
             
             if file_extension not in valid_photo_extensions:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Photo file type '{file_extension}' is not supported. Please use JPEG, PNG, or WebP format."
+                raise CustomHTTPException(
+                    error_code=ErrorCodes.INVALID_INPUT,
+                    message=f"Photo file type '{file_extension}' is not supported. Please use JPEG, PNG, or WebP format."
                 )
             
             if photo.content_type and photo.content_type not in valid_photo_types:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Photo file type '{photo.content_type}' is not supported. Please use JPEG, PNG, or WebP format."
+                raise CustomHTTPException(
+                    error_code=ErrorCodes.INVALID_INPUT,
+                    message=f"Photo file type '{photo.content_type}' is not supported. Please use JPEG, PNG, or WebP format."
                 )
             
             try:
                 file_content = await photo.read()
                 
                 if not file_content:
-                    raise HTTPException(
-                        status_code=400,
-                        detail="Photo file appears to be empty. Please select a valid photo file."
+                    raise CustomHTTPException(
+                        error_code=ErrorCodes.INVALID_INPUT,
+                        message="Photo file appears to be empty. Please select a valid photo file."
                     )
                 
                 # Check file size (5MB limit for photos)
                 if len(file_content) > 5242880:  # 5MB in bytes
                     file_size_mb = len(file_content) / (1024 * 1024)
-                    raise HTTPException(
-                        status_code=413,
-                        detail=f"Photo file is too large ({file_size_mb:.1f}MB). Maximum size allowed is 5MB."
+                    raise CustomHTTPException(
+                        error_code=ErrorCodes.INVALID_INPUT,
+                        message=f"Photo file is too large ({file_size_mb:.1f}MB). Maximum size allowed is 5MB."
                     )
                 
                 # Generate safe filename
@@ -315,9 +327,9 @@ async def submit_testimonial(
                     )
                     
                     if hasattr(storage_response, 'error') and storage_response.error:
-                        raise HTTPException(
-                            status_code=500,
-                            detail=f"Failed to upload photo: {storage_response.error}"
+                        raise CustomHTTPException(
+                            error_code=ErrorCodes.INTERNAL_SERVER_ERROR,
+                            message=f"Failed to upload photo: {storage_response.error}"
                         )
                     
                     photo_url = f"{SUPABASE_URL}/storage/v1/object/public/testimonial-photos/{filename}"
@@ -326,18 +338,18 @@ async def submit_testimonial(
                     if "already exists" in str(storage_error).lower():
                         photo_url = f"{SUPABASE_URL}/storage/v1/object/public/testimonial-photos/{filename}"
                     else:
-                        raise HTTPException(
-                            status_code=500,
-                            detail=f"Failed to upload photo: {str(storage_error)}"
+                        raise CustomHTTPException(
+                            error_code=ErrorCodes.INTERNAL_SERVER_ERROR,
+                            message=f"Failed to upload photo: {str(storage_error)}"
                         )
                         
-            except HTTPException:
+            except CustomHTTPException:
                 raise
             except Exception as file_error:
                 print(f"Photo processing error: {str(file_error)}")
-                raise HTTPException(
-                    status_code=500,
-                    detail="Failed to process photo file. Please check the file format and try again."
+                raise CustomHTTPException(
+                    error_code=ErrorCodes.INTERNAL_SERVER_ERROR,
+                    message="Failed to process photo file. Please check the file format and try again."
                 )
 
         # Insert testimonial into database
@@ -360,9 +372,9 @@ async def submit_testimonial(
             db_response = supabase.table('testimonials').insert(testimonial_data).execute()
             
             if hasattr(db_response, 'status_code') and db_response.status_code >= 400:
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Failed to save testimonial: {db_response.status_code}"
+                raise CustomHTTPException(
+                    error_code=ErrorCodes.INTERNAL_SERVER_ERROR,
+                    message=f"Failed to save testimonial: {db_response.status_code}"
                 )
             
             # Trigger notification for new testimonial
@@ -385,22 +397,22 @@ async def submit_testimonial(
                 "video_url": video_url
             }
             
-        except HTTPException:
+        except CustomHTTPException:
             raise
         except Exception as db_error:
             print(f"Database error: {str(db_error)}")
-            raise HTTPException(
-                status_code=500,
-                detail="Failed to save testimonial to database. Please try again."
+            raise CustomHTTPException(
+                error_code=ErrorCodes.INTERNAL_SERVER_ERROR,
+                message="Failed to save testimonial to database. Please try again."
             )
         
-    except HTTPException:
+    except CustomHTTPException:
         raise
     except Exception as e:
         print(f"Unexpected error in submit_testimonial: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail="An unexpected error occurred while submitting the testimonial"
+        raise CustomHTTPException(
+            error_code=ErrorCodes.INTERNAL_SERVER_ERROR,
+            message="An unexpected error occurred while submitting the testimonial"
         )
 
 @app.get("/testimonials/{user_id}")
@@ -436,9 +448,9 @@ async def get_testimonials(user_id: str, approved_only: bool = False):
         print(f"Unexpected error in get_testimonials: {str(e)}")
         print(f"Error type: {type(e)}")
         print(f"Error details: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"An unexpected error occurred while fetching testimonials: {str(e)}"
+        raise CustomHTTPException(
+            error_code=ErrorCodes.INTERNAL_SERVER_ERROR,
+            message=f"An unexpected error occurred while fetching testimonials: {str(e)}"
         )
         
 @app.put("/testimonials/{testimonial_id}/approve")
@@ -460,15 +472,15 @@ async def approve_testimonial(testimonial_id: str):
         ).eq('id', testimonial_id).execute()
         
         if hasattr(response, 'status_code') and response.status_code >= 400:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to approve testimonial: {response.status_code}"
+            raise CustomHTTPException(
+                error_code=ErrorCodes.INTERNAL_SERVER_ERROR,
+                message=f"Failed to approve testimonial: {response.status_code}"
             )
         
         if not response.data:
-            raise HTTPException(
-                status_code=404,
-                detail="Testimonial not found"
+            raise CustomHTTPException(
+                error_code=ErrorCodes.NOT_FOUND,
+                message="Testimonial not found"
             )
         
         return {
@@ -476,13 +488,13 @@ async def approve_testimonial(testimonial_id: str):
             "message": "Testimonial approved successfully"
         }
         
-    except HTTPException:
+    except CustomHTTPException:
         raise
     except Exception as e:
         print(f"Unexpected error in approve_testimonial: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail="An unexpected error occurred while approving the testimonial"
+        raise CustomHTTPException(
+            error_code=ErrorCodes.INTERNAL_SERVER_ERROR,
+            message="An unexpected error occurred while approving the testimonial"
         )
 
 @app.put("/testimonials/{testimonial_id}/reject")
@@ -504,15 +516,15 @@ async def reject_testimonial(testimonial_id: str):
         ).eq('id', testimonial_id).execute()
         
         if hasattr(response, 'status_code') and response.status_code >= 400:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to reject testimonial: {response.status_code}"
+            raise CustomHTTPException(
+                error_code=ErrorCodes.INTERNAL_SERVER_ERROR,
+                message=f"Failed to reject testimonial: {response.status_code}"
             )
         
         if not response.data:
-            raise HTTPException(
-                status_code=404,
-                detail="Testimonial not found"
+            raise CustomHTTPException(
+                error_code=ErrorCodes.NOT_FOUND,
+                message="Testimonial not found"
             )
         
         return {
@@ -520,13 +532,13 @@ async def reject_testimonial(testimonial_id: str):
             "message": "Testimonial rejected successfully"
         }
         
-    except HTTPException:
+    except CustomHTTPException:
         raise
     except Exception as e:
         print(f"Unexpected error in reject_testimonial: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail="An unexpected error occurred while rejecting the testimonial"
+        raise CustomHTTPException(
+            error_code=ErrorCodes.INTERNAL_SERVER_ERROR,
+            message="An unexpected error occurred while rejecting the testimonial"
         )
 
 @app.delete("/testimonials/{testimonial_id}")
@@ -547,15 +559,15 @@ async def delete_testimonial(testimonial_id: str):
         get_response = supabase.table('testimonials').select('video_url').eq('id', testimonial_id).execute()
         
         if hasattr(get_response, 'status_code') and get_response.status_code >= 400:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to fetch testimonial: {get_response.status_code}"
+            raise CustomHTTPException(
+                error_code=ErrorCodes.INTERNAL_SERVER_ERROR,
+                message=f"Failed to fetch testimonial: {get_response.status_code}"
             )
         
         if not get_response.data:
-            raise HTTPException(
-                status_code=404,
-                detail="Testimonial not found"
+            raise CustomHTTPException(
+                error_code=ErrorCodes.NOT_FOUND,
+                message="Testimonial not found"
             )
         
         # Delete video from storage if it exists
@@ -572,9 +584,9 @@ async def delete_testimonial(testimonial_id: str):
         delete_response = supabase.table('testimonials').delete().eq('id', testimonial_id).execute()
         
         if hasattr(delete_response, 'status_code') and delete_response.status_code >= 400:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to delete testimonial: {delete_response.status_code}"
+            raise CustomHTTPException(
+                error_code=ErrorCodes.INTERNAL_SERVER_ERROR,
+                message=f"Failed to delete testimonial: {delete_response.status_code}"
             )
         
         return {
@@ -582,13 +594,13 @@ async def delete_testimonial(testimonial_id: str):
             "message": "Testimonial deleted successfully"
         }
         
-    except HTTPException:
+    except CustomHTTPException:
         raise
     except Exception as e:
         print(f"Unexpected error in delete_testimonial: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail="An unexpected error occurred while deleting the testimonial"
+        raise CustomHTTPException(
+            error_code=ErrorCodes.INTERNAL_SERVER_ERROR,
+            message="An unexpected error occurred while deleting the testimonial"
         )
 
 # Automation Rules Endpoints
@@ -610,9 +622,9 @@ async def get_automation_rules(user_id: str):
         response = supabase.table('automation_rules').select('*').eq('user_id', user_id).order('priority', desc=True).execute()
         
         if hasattr(response, 'status_code') and response.status_code >= 400:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to fetch automation rules: {response.status_code}"
+            raise CustomHTTPException(
+                error_code=ErrorCodes.INTERNAL_SERVER_ERROR,
+                message=f"Failed to fetch automation rules: {response.status_code}"
             )
         
         return {
@@ -620,13 +632,13 @@ async def get_automation_rules(user_id: str):
             "rules": response.data or []
         }
         
-    except HTTPException:
+    except CustomHTTPException:
         raise
     except Exception as e:
         print(f"Unexpected error in get_automation_rules: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail="An unexpected error occurred while fetching automation rules"
+        raise CustomHTTPException(
+            error_code=ErrorCodes.INTERNAL_SERVER_ERROR,
+            message="An unexpected error occurred while fetching automation rules"
         )
 
 @app.post("/automation/rules")
@@ -676,9 +688,9 @@ async def create_automation_rule(
         response = supabase.table('automation_rules').insert(rule_data).execute()
         
         if hasattr(response, 'status_code') and response.status_code >= 400:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to create automation rule: {response.status_code}"
+            raise CustomHTTPException(
+                error_code=ErrorCodes.INTERNAL_SERVER_ERROR,
+                message=f"Failed to create automation rule: {response.status_code}"
             )
         
         return {
@@ -686,13 +698,13 @@ async def create_automation_rule(
             "rule": response.data[0] if response.data else rule_data
         }
         
-    except HTTPException:
+    except CustomHTTPException:
         raise
     except Exception as e:
         print(f"Unexpected error in create_automation_rule: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail="An unexpected error occurred while creating the automation rule"
+        raise CustomHTTPException(
+            error_code=ErrorCodes.INTERNAL_SERVER_ERROR,
+            message="An unexpected error occurred while creating the automation rule"
         )
 
 @app.put("/automation/rules/{rule_id}")
@@ -739,15 +751,15 @@ async def update_automation_rule(
         response = supabase.table('automation_rules').update(update_data).eq('id', rule_id).execute()
         
         if hasattr(response, 'status_code') and response.status_code >= 400:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to update automation rule: {response.status_code}"
+            raise CustomHTTPException(
+                error_code=ErrorCodes.INTERNAL_SERVER_ERROR,
+                message=f"Failed to update automation rule: {response.status_code}"
             )
         
         if not response.data:
-            raise HTTPException(
-                status_code=404,
-                detail="Automation rule not found"
+            raise CustomHTTPException(
+                error_code=ErrorCodes.NOT_FOUND,
+                message="Automation rule not found"
             )
         
         return {
@@ -755,13 +767,13 @@ async def update_automation_rule(
             "rule": response.data[0]
         }
         
-    except HTTPException:
+    except CustomHTTPException:
         raise
     except Exception as e:
         print(f"Unexpected error in update_automation_rule: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail="An unexpected error occurred while updating the automation rule"
+        raise CustomHTTPException(
+            error_code=ErrorCodes.INTERNAL_SERVER_ERROR,
+            message="An unexpected error occurred while updating the automation rule"
         )
 
 @app.put("/automation/rules/{rule_id}/toggle")
@@ -785,15 +797,15 @@ async def toggle_automation_rule(rule_id: str, enabled: bool):
         }).eq('id', rule_id).execute()
         
         if hasattr(response, 'status_code') and response.status_code >= 400:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to toggle automation rule: {response.status_code}"
+            raise CustomHTTPException(
+                error_code=ErrorCodes.INTERNAL_SERVER_ERROR,
+                message=f"Failed to toggle automation rule: {response.status_code}"
             )
         
         if not response.data:
-            raise HTTPException(
-                status_code=404,
-                detail="Automation rule not found"
+            raise CustomHTTPException(
+                error_code=ErrorCodes.NOT_FOUND,
+                message="Automation rule not found"
             )
         
         return {
@@ -801,13 +813,13 @@ async def toggle_automation_rule(rule_id: str, enabled: bool):
             "message": f"Rule {'enabled' if enabled else 'disabled'} successfully"
         }
         
-    except HTTPException:
+    except CustomHTTPException:
         raise
     except Exception as e:
         print(f"Unexpected error in toggle_automation_rule: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail="An unexpected error occurred while toggling the automation rule"
+        raise CustomHTTPException(
+            error_code=ErrorCodes.INTERNAL_SERVER_ERROR,
+            message="An unexpected error occurred while toggling the automation rule"
         )
 
 @app.delete("/automation/rules/{rule_id}")
@@ -827,9 +839,9 @@ async def delete_automation_rule(rule_id: str):
         response = supabase.table('automation_rules').delete().eq('id', rule_id).execute()
         
         if hasattr(response, 'status_code') and response.status_code >= 400:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to delete automation rule: {response.status_code}"
+            raise CustomHTTPException(
+                error_code=ErrorCodes.INTERNAL_SERVER_ERROR,
+                message=f"Failed to delete automation rule: {response.status_code}"
             )
         
         return {
@@ -837,13 +849,13 @@ async def delete_automation_rule(rule_id: str):
             "message": "Automation rule deleted successfully"
         }
         
-    except HTTPException:
+    except CustomHTTPException:
         raise
     except Exception as e:
         print(f"Unexpected error in delete_automation_rule: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail="An unexpected error occurred while deleting the automation rule"
+        raise CustomHTTPException(
+            error_code=ErrorCodes.INTERNAL_SERVER_ERROR,
+            message="An unexpected error occurred while deleting the automation rule"
         )
 
 @app.post("/automation/rules/{rule_id}/test")
@@ -865,9 +877,9 @@ async def test_automation_rule(rule_id: str, testimonial_data: dict):
         rule_response = supabase.table('automation_rules').select('*').eq('id', rule_id).execute()
         
         if not rule_response.data:
-            raise HTTPException(
-                status_code=404,
-                detail="Automation rule not found"
+            raise CustomHTTPException(
+                error_code=ErrorCodes.NOT_FOUND,
+                message="Automation rule not found"
             )
         
         rule = rule_response.data[0]
@@ -886,13 +898,13 @@ async def test_automation_rule(rule_id: str, testimonial_data: dict):
             "testimonial_data": testimonial_data
         }
         
-    except HTTPException:
+    except CustomHTTPException:
         raise
     except Exception as e:
         print(f"Unexpected error in test_automation_rule: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail="An unexpected error occurred while testing the automation rule"
+        raise CustomHTTPException(
+            error_code=ErrorCodes.INTERNAL_SERVER_ERROR,
+            message="An unexpected error occurred while testing the automation rule"
         )
 
 def evaluate_rule_conditions(conditions: list, testimonial_data: dict) -> bool:
@@ -1011,13 +1023,13 @@ async def get_automation_stats(user_id: str):
             "automationRate": automation_rate
         }
         
-    except HTTPException:
+    except CustomHTTPException:
         raise
     except Exception as e:
         print(f"Unexpected error in get_automation_stats: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail="An unexpected error occurred while fetching automation statistics"
+        raise CustomHTTPException(
+            error_code=ErrorCodes.INTERNAL_SERVER_ERROR,
+            message="An unexpected error occurred while fetching automation statistics"
         )
 
 @app.get("/personal-message/{user_id}")
@@ -1043,10 +1055,10 @@ async def get_personal_message(user_id: str):
         
     except Exception as e:
         print(f"Error getting personal message: {str(e)}")
-        return {
-            "success": True,
-            "message": None
-        }
+        raise CustomHTTPException(
+            error_code=ErrorCodes.INTERNAL_SERVER_ERROR,
+            message="Failed to get personal message"
+        )
 
 @app.get("/personal-messages/{user_id}")
 async def get_user_personal_messages(user_id: str):
@@ -1071,9 +1083,9 @@ async def get_user_personal_messages(user_id: str):
         
     except Exception as e:
         print(f"Error getting personal messages: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to fetch personal messages: {str(e)}"
+        raise CustomHTTPException(
+            error_code=ErrorCodes.INTERNAL_SERVER_ERROR,
+            message=f"Failed to fetch personal messages: {str(e)}"
         )
 
 @app.post("/personal-messages")
@@ -1100,27 +1112,27 @@ async def create_personal_message(
     message = message.strip()
     
     if not title:
-        raise HTTPException(
-            status_code=400,
-            detail="Title is required."
+        raise CustomHTTPException(
+            error_code=ErrorCodes.INVALID_INPUT,
+            message="Title is required."
         )
     
     if not message:
-        raise HTTPException(
-            status_code=400,
-            detail="Message content is required."
+        raise CustomHTTPException(
+            error_code=ErrorCodes.INVALID_INPUT,
+            message="Message content is required."
         )
     
     if len(title) > 100:
-        raise HTTPException(
-            status_code=400,
-            detail="Title must be 100 characters or less."
+        raise CustomHTTPException(
+            error_code=ErrorCodes.INVALID_INPUT,
+            message="Title must be 100 characters or less."
         )
     
     if len(message) > 500:
-        raise HTTPException(
-            status_code=400,
-            detail="Message must be 500 characters or less."
+        raise CustomHTTPException(
+            error_code=ErrorCodes.INVALID_INPUT,
+            message="Message must be 500 characters or less."
         )
     
     try:
@@ -1141,9 +1153,9 @@ async def create_personal_message(
         response = supabase.table('personal_messages').insert(message_data).execute()
         
         if hasattr(response, 'status_code') and response.status_code >= 400:
-            raise HTTPException(
-                status_code=500,
-                detail="Failed to create personal message"
+            raise CustomHTTPException(
+                error_code=ErrorCodes.INTERNAL_SERVER_ERROR,
+                message="Failed to create personal message"
             )
         
         return {
@@ -1152,13 +1164,13 @@ async def create_personal_message(
             "data": response.data[0] if response.data else None
         }
         
-    except HTTPException:
+    except CustomHTTPException:
         raise
     except Exception as e:
         print(f"Error creating personal message: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to create personal message: {str(e)}"
+        raise CustomHTTPException(
+            error_code=ErrorCodes.INTERNAL_SERVER_ERROR,
+            message=f"Failed to create personal message: {str(e)}"
         )
 
 @app.put("/personal-messages/{message_id}")
@@ -1185,27 +1197,27 @@ async def update_personal_message(
     message = message.strip()
     
     if not title:
-        raise HTTPException(
-            status_code=400,
-            detail="Title is required."
+        raise CustomHTTPException(
+            error_code=ErrorCodes.INVALID_INPUT,
+            message="Title is required."
         )
     
     if not message:
-        raise HTTPException(
-            status_code=400,
-            detail="Message content is required."
+        raise CustomHTTPException(
+            error_code=ErrorCodes.INVALID_INPUT,
+            message="Message content is required."
         )
     
     if len(title) > 100:
-        raise HTTPException(
-            status_code=400,
-            detail="Title must be 100 characters or less."
+        raise CustomHTTPException(
+            error_code=ErrorCodes.INVALID_INPUT,
+            message="Title must be 100 characters or less."
         )
     
     if len(message) > 500:
-        raise HTTPException(
-            status_code=400,
-            detail="Message must be 500 characters or less."
+        raise CustomHTTPException(
+            error_code=ErrorCodes.INVALID_INPUT,
+            message="Message must be 500 characters or less."
         )
     
     try:
@@ -1215,9 +1227,9 @@ async def update_personal_message(
         get_response = supabase.table('personal_messages').select('user_id').eq('id', message_id).execute()
         
         if not get_response.data:
-            raise HTTPException(
-                status_code=404,
-                detail="Personal message not found"
+            raise CustomHTTPException(
+                error_code=ErrorCodes.NOT_FOUND,
+                message="Personal message not found"
             )
         
         user_id = get_response.data[0]['user_id']
@@ -1236,15 +1248,15 @@ async def update_personal_message(
         response = supabase.table('personal_messages').update(update_data).eq('id', message_id).execute()
         
         if hasattr(response, 'status_code') and response.status_code >= 400:
-            raise HTTPException(
-                status_code=500,
-                detail="Failed to update personal message"
+            raise CustomHTTPException(
+                error_code=ErrorCodes.INTERNAL_SERVER_ERROR,
+                message="Failed to update personal message"
             )
         
         if not response.data:
-            raise HTTPException(
-                status_code=404,
-                detail="Personal message not found"
+            raise CustomHTTPException(
+                error_code=ErrorCodes.NOT_FOUND,
+                message="Personal message not found"
             )
         
         return {
@@ -1252,13 +1264,13 @@ async def update_personal_message(
             "message": "Personal message updated successfully"
         }
         
-    except HTTPException:
+    except CustomHTTPException:
         raise
     except Exception as e:
         print(f"Error updating personal message: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to update personal message: {str(e)}"
+        raise CustomHTTPException(
+            error_code=ErrorCodes.INTERNAL_SERVER_ERROR,
+            message=f"Failed to update personal message: {str(e)}"
         )
 
 @app.delete("/personal-messages/{message_id}")
@@ -1278,9 +1290,9 @@ async def delete_personal_message(message_id: str):
         response = supabase.table('personal_messages').delete().eq('id', message_id).execute()
         
         if hasattr(response, 'status_code') and response.status_code >= 400:
-            raise HTTPException(
-                status_code=500,
-                detail="Failed to delete personal message"
+            raise CustomHTTPException(
+                error_code=ErrorCodes.INTERNAL_SERVER_ERROR,
+                message="Failed to delete personal message"
             )
         
         return {
@@ -1288,13 +1300,13 @@ async def delete_personal_message(message_id: str):
             "message": "Personal message deleted successfully"
         }
         
-    except HTTPException:
+    except CustomHTTPException:
         raise
     except Exception as e:
         print(f"Error deleting personal message: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to delete personal message: {str(e)}"
+        raise CustomHTTPException(
+            error_code=ErrorCodes.INTERNAL_SERVER_ERROR,
+            message=f"Failed to delete personal message: {str(e)}"
         )
 
 # Analytics Endpoints
@@ -1460,11 +1472,13 @@ async def get_analytics_stats(user_id: str):
             }
         }
         
+    except CustomHTTPException:
+        raise
     except Exception as e:
         print(f"Error getting analytics stats: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to get analytics stats: {str(e)}"
+        raise CustomHTTPException(
+            error_code=ErrorCodes.INTERNAL_SERVER_ERROR,
+            message=f"Failed to get analytics stats: {str(e)}"
         )
 
 @app.get("/analytics/{user_id}/timeline")
@@ -1517,11 +1531,13 @@ async def get_analytics_timeline(user_id: str, days: int = 30):
             "timeline": timeline_list
         }
         
+    except CustomHTTPException:
+        raise
     except Exception as e:
         print(f"Error getting analytics timeline: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to get analytics timeline: {str(e)}"
+        raise CustomHTTPException(
+            error_code=ErrorCodes.INTERNAL_SERVER_ERROR,
+            message=f"Failed to get analytics timeline: {str(e)}"
         )
 
 # Notification endpoints
@@ -1545,16 +1561,18 @@ async def get_notification_preferences(user_id: str):
         if result['success']:
             return result
         else:
-            raise HTTPException(
-                status_code=404,
-                detail=result['error']
+            raise CustomHTTPException(
+                error_code=ErrorCodes.NOT_FOUND,
+                message=result['error']
             )
             
+    except CustomHTTPException:
+        raise
     except Exception as e:
         print(f"Error getting notification preferences: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to get notification preferences: {str(e)}"
+        raise CustomHTTPException(
+            error_code=ErrorCodes.INTERNAL_SERVER_ERROR,
+            message=f"Failed to get notification preferences: {str(e)}"
         )
 
 @app.put("/notifications/preferences/{user_id}")
@@ -1578,16 +1596,18 @@ async def update_notification_preferences(user_id: str, preferences: Dict[str, A
         if result['success']:
             return result
         else:
-            raise HTTPException(
-                status_code=400,
-                detail=result['error']
+            raise CustomHTTPException(
+                error_code=ErrorCodes.INVALID_INPUT,
+                message=result['error']
             )
             
+    except CustomHTTPException:
+        raise
     except Exception as e:
         print(f"Error updating notification preferences: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to update notification preferences: {str(e)}"
+        raise CustomHTTPException(
+            error_code=ErrorCodes.INTERNAL_SERVER_ERROR,
+            message=f"Failed to update notification preferences: {str(e)}"
         )
 
 @app.post("/notifications/test/{user_id}")
@@ -1618,24 +1638,26 @@ async def test_notification(user_id: str, notification_type: str = "new_testimon
         elif notification_type == "pending_reminder":
             result = await notification_service.send_pending_reminder(user_id)
         else:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid notification type: {notification_type}"
+            raise CustomHTTPException(
+                error_code=ErrorCodes.INVALID_INPUT,
+                message=f"Invalid notification type: {notification_type}"
             )
         
         if result['success']:
             return result
         else:
-            raise HTTPException(
-                status_code=500,
-                detail=result['error']
+            raise CustomHTTPException(
+                error_code=ErrorCodes.INTERNAL_SERVER_ERROR,
+                message=result['error']
             )
             
+    except CustomHTTPException:
+        raise
     except Exception as e:
         print(f"Error testing notification: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to test notification: {str(e)}"
+        raise CustomHTTPException(
+            error_code=ErrorCodes.INTERNAL_SERVER_ERROR,
+            message=f"Failed to test notification: {str(e)}"
         )
 
 @app.get("/notifications/logs/{user_id}")
@@ -1659,16 +1681,18 @@ async def get_notification_logs(user_id: str, limit: int = 50):
         if result['success']:
             return result
         else:
-            raise HTTPException(
-                status_code=500,
-                detail=result['error']
+            raise CustomHTTPException(
+                error_code=ErrorCodes.INTERNAL_SERVER_ERROR,
+                message=result['error']
             )
             
+    except CustomHTTPException:
+        raise
     except Exception as e:
         print(f"Error getting notification logs: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to get notification logs: {str(e)}"
+        raise CustomHTTPException(
+            error_code=ErrorCodes.INTERNAL_SERVER_ERROR,
+            message=f"Failed to get notification logs: {str(e)}"
         )
 
 @app.post("/notifications/unsubscribe")
@@ -1680,7 +1704,7 @@ async def unsubscribe_from_notifications(email: str):
         email: User's email address
     
     Returns:
-        Unsubscribe result
+        Unsubscribe confirmation
     """
     try:
         supabase = get_supabase_client()
@@ -1691,16 +1715,119 @@ async def unsubscribe_from_notifications(email: str):
         if result['success']:
             return result
         else:
-            raise HTTPException(
-                status_code=404,
-                detail=result['error']
+            raise CustomHTTPException(
+                error_code=ErrorCodes.INVALID_INPUT,
+                message=result['error']
             )
             
+    except CustomHTTPException:
+        raise
     except Exception as e:
         print(f"Error unsubscribing user: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to unsubscribe: {str(e)}"
+        raise CustomHTTPException(
+            error_code=ErrorCodes.INTERNAL_SERVER_ERROR,
+            message=f"Failed to unsubscribe: {str(e)}"
+        )
+
+# Email delivery tracking endpoints
+@app.get("/email/delivery/{delivery_id}")
+async def get_email_delivery_status(delivery_id: str):
+    """
+    Get email delivery status
+    
+    Args:
+        delivery_id: Unique delivery identifier
+    
+    Returns:
+        Email delivery status
+    """
+    try:
+        from email_service import email_service
+        
+        status = email_service.get_delivery_status(delivery_id)
+        
+        if status:
+            return {"success": True, "status": status}
+        else:
+            raise CustomHTTPException(
+                error_code=ErrorCodes.NOT_FOUND,
+                message="Delivery ID not found"
+            )
+            
+    except CustomHTTPException:
+        raise
+    except Exception as e:
+        print(f"Error getting delivery status: {str(e)}")
+        raise CustomHTTPException(
+            error_code=ErrorCodes.INTERNAL_SERVER_ERROR,
+            message=f"Failed to get delivery status: {str(e)}"
+        )
+
+@app.get("/email/delivery-logs")
+async def get_email_delivery_logs(
+    email: Optional[str] = None,
+    email_type: Optional[str] = None,
+    limit: int = 100
+):
+    """
+    Get email delivery logs with optional filtering
+    
+    Args:
+        email: Filter by email address
+        email_type: Filter by email type
+        limit: Maximum number of logs to return
+    
+    Returns:
+        Email delivery logs
+    """
+    try:
+        from email_service import email_service
+        
+        logs = email_service.get_delivery_logs(email, email_type, limit)
+        
+        return {"success": True, "logs": logs}
+        
+    except CustomHTTPException:
+        raise
+    except Exception as e:
+        print(f"Error getting delivery logs: {str(e)}")
+        raise CustomHTTPException(
+            error_code=ErrorCodes.INTERNAL_SERVER_ERROR,
+            message=f"Failed to get delivery logs: {str(e)}"
+        )
+
+@app.post("/email/send-welcome")
+async def send_welcome_email(user_email: str, user_name: Optional[str] = None):
+    """
+    Send welcome email to new user
+    
+    Args:
+        user_email: User's email address
+        user_name: User's name (optional)
+    
+    Returns:
+        Email sending result
+    """
+    try:
+        from email_service import email_service
+        
+        result = await email_service.send_welcome_email(user_email, user_name)
+        
+        if result['success']:
+            return result
+        else:
+            raise CustomHTTPException(
+                error_code=ErrorCodes.INTERNAL_SERVER_ERROR,
+                message=result['error']
+            )
+            
+    except CustomHTTPException:
+        raise
+    except Exception as e:
+        print(f"Error sending welcome email: {str(e)}")
+        raise CustomHTTPException(
+            error_code=ErrorCodes.INTERNAL_SERVER_ERROR,
+            message=f"Failed to send welcome email: {str(e)}"
         )
 
 if __name__ == "__main__":
